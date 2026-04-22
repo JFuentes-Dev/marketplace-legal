@@ -30,11 +30,8 @@ export default async function PerfilAbogado({ params }: Props) {
 
   if (!data) notFound()
 
-  const perfil = data.profiles as {
-    nombre: string
-    apellido: string
-    avatar_url: string | null
-  } | null
+  const perfilRaw = data.profiles as { nombre: string; apellido: string; avatar_url: string | null }[] | { nombre: string; apellido: string; avatar_url: string | null } | null
+  const perfil = Array.isArray(perfilRaw) ? perfilRaw[0] : perfilRaw
 
   const nombre = `${perfil?.nombre ?? ""} ${perfil?.apellido ?? ""}`.trim()
   const iniciales = `${perfil?.nombre?.[0] ?? ""}${perfil?.apellido?.[0] ?? ""}`

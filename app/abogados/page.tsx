@@ -32,11 +32,11 @@ export default async function ListadoAbogados() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {abogados.map((abogado) => {
-            const perfil = abogado.profiles as {
-              nombre: string
-              apellido: string
-              avatar_url: string | null
-            } | null
+            const perfilRaw = abogado.profiles as
+              | { nombre: string; apellido: string; avatar_url: string | null }[]
+              | { nombre: string; apellido: string; avatar_url: string | null }
+              | null
+            const perfil = Array.isArray(perfilRaw) ? perfilRaw[0] : perfilRaw
 
             return (
               <Link
