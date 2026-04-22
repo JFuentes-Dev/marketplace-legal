@@ -24,7 +24,7 @@ export default function RecuperarPassword() {
 
     const resultado = esquema.safeParse({ email })
     if (!resultado.success) {
-      setError(resultado.error.errors[0].message)
+      setError(resultado.error.issues[0].message)
       return
     }
 
