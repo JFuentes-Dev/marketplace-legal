@@ -1,10 +1,9 @@
-// components/shared/LogoutButton.tsx
 'use client'
-
+// components/shared/LogoutButton.tsx
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-export default function LogoutButton() {
+export function LogoutButton() {
   const router = useRouter()
 
   async function handleLogout() {
@@ -17,7 +16,8 @@ export default function LogoutButton() {
   return (
     <button
       onClick={handleLogout}
-      className="text-sm text-gray-500 hover:text-red-600 transition-colors"
+      className="btn-secondary"
+      style={{ fontSize: 10 }}
     >
       Cerrar sesión
     </button>

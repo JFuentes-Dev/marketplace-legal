@@ -1,19 +1,14 @@
-"use client"
+// components/ui/label.tsx
+import React from 'react'
 
-import { cn } from "@/lib/utils"
+interface LabelProps extends React.LabelHTMLAttributes<HTMLLabelElement> {}
 
-interface LabelProps extends React.LabelHTMLAttributes<HTMLLabelElement> {
-  className?: string
-}
-
-export function Label({ className, ...props }: LabelProps) {
+export function Label({ children, style, ...props }: LabelProps) {
   return (
-    <label
-      className={cn(
-        "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
-        className
-      )}
-      {...props}
-    />
+    <label className="label-dls" style={style} {...props}>
+      {children}
+    </label>
   )
 }
+
+export default Label

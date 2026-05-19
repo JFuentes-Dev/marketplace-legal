@@ -1,80 +1,208 @@
+// app/dashboard/abogado/page.tsx
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import LogoutButton from '@/components/shared/LogoutButton'
+import { createClient } from '@/lib/supabase/server'
+import { EstadoBadge } from '@/components/casos/EstadoBadge'
+import { BadgeNoLeidos } from '@/components/ui/badge'
+import { StarRating } from '@/components/ui/star-rating'
+
+const IconArrow = () => (
+  <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="2" y1="7" x2="12" y2="7" /><polyline points="8,3 12,7 8,11" />
+  </svg>
+)
 
 export default async function DashboardAbogadoPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
+  const { data: perfil } = await supabase
     .from('profiles')
-    .select('*')
+    .select('nombre, apellido')
     .eq('id', user.id)
     .single()
-
-  if (profile?.role !== 'abogado') redirect('/dashboard')
 
   const { data: lawyerProfile } = await supabase
     .from('lawyer_profiles')
-    .select('rut, bio, tarifa_hora, especialidades')
+    .select('verified')
     .eq('id', user.id)
     .single()
 
-  const perfilCompleto = !!(lawyerProfile?.rut && lawyerProfile?.bio && lawyerProfile?.tarifa_hora)
+  const { data: casos } = await supabase
+    .from('casos')
+    .select('*')
+    .eq('abogado_id', user.id)
+    .order('updated_at', { ascending: false })
+
+  const { data: reviews } = await supabase
+    .from('reviews')
+    .select('puntuacion')
+    .eq('abogado_id', user.id)
+
+  const promedio =
+    reviews && reviews.length > 0
+      ? Math.round((reviews.reduce((acc, r) => acc + r.puntuacion, 0) / reviews.length) * 10) / 10
+      : null
+
+  const casosActivos = (casos ?? []).filter(c => c.estado === 'asignado' || c.estado === 'en_progreso').length
+
+  // Mensajes no leídos
+  const casosIds = (casos ?? []).map((c) => c.id)
+  const noLeidosPorCaso: Record<string, number> = {}
+
+  if (casosIds.length > 0) {
+    const { data: mensajes } = await supabase
+      .from('mensajes').select('id, caso_id, autor_id')
+      .in('caso_id', casosIds).neq('autor_id', user.id)
+    const mensajesAjenos = mensajes ?? []
+    const mensajesIds = mensajesAjenos.map(m => m.id)
+    let leidosIds: string[] = []
+    if (mensajesIds.length > 0) {
+      const { data: lecturas } = await supabase
+        .from('mensaje_lecturas').select('mensaje_id')
+        .in('mensaje_id', mensajesIds).eq('user_id', user.id)
+      leidosIds = (lecturas ?? []).map(l => l.mensaje_id)
+    }
+    for (const msg of mensajesAjenos) {
+      if (!leidosIds.includes(msg.id)) {
+        noLeidosPorCaso[msg.caso_id] = (noLeidosPorCaso[msg.caso_id] ?? 0) + 1
+      }
+    }
+  }
 
   return (
-    <main className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-gray-900">
-              Hola, {profile?.nombre ?? user.email} 👋
-            </h1>
-            {!profile?.verified && (
-              <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
-                Pendiente verificación
-              </span>
-            )}
-          </div>
-          <Link
-            href="/dashboard/abogado/perfil"
-            className="text-sm text-blue-600 hover:underline"
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <div className="eyebrow" style={{ marginBottom: 10 }}>Panel de abogado</div>
+          <h1
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontWeight: 500,
+              fontSize: 'clamp(28px, 4vw, 42px)',
+              color: 'var(--dls-navy)',
+              lineHeight: 1.1,
+            }}
           >
-            Editar perfil →
-          </Link>
-          <LogoutButton />
+            Hola,{' '}
+            <em style={{ fontStyle: 'italic', color: 'var(--dls-champagne)' }}>
+              {perfil?.nombre ?? 'abogado'}
+            </em>
+          </h1>
         </div>
-
-        <p className="text-gray-500 mb-4">Panel de abogado</p>
-
-        {/* Aviso si el perfil está incompleto */}
-        {!perfilCompleto && (
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800">
-            Tu perfil profesional está incompleto.{" "}
-            <Link href="/dashboard/abogado/perfil" className="font-medium underline">
-              Complétalo aquí
-            </Link>{" "}
-            para aparecer en el marketplace.
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <TarjetaDashboard titulo="Casos activos" valor="0" />
-          <TarjetaDashboard titulo="Consultas recibidas" valor="0" />
-          <TarjetaDashboard titulo="Valoración" valor="—" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {lawyerProfile?.verified === false && (
+            <div
+              style={{
+                padding: '6px 14px',
+                background: 'rgba(201,163,90,0.1)',
+                border: '1px solid rgba(201,163,90,0.3)',
+                fontFamily: 'var(--font-body)',
+                fontWeight: 600,
+                fontSize: 10,
+                letterSpacing: '0.16em',
+                textTransform: 'uppercase',
+                color: 'var(--dls-champagne)',
+              }}
+            >
+              Pendiente de verificación
+            </div>
+          )}
+          <Link href="/dashboard/abogado/perfil" className="btn-secondary">
+            <span>Editar perfil</span>
+            <IconArrow />
+          </Link>
         </div>
       </div>
-    </main>
-  )
-}
 
-function TarjetaDashboard({ titulo, valor }: { titulo: string; valor: string }) {
-  return (
-    <div className="bg-white rounded-2xl border p-6">
-      <p className="text-sm text-gray-500 mb-1">{titulo}</p>
-      <p className="text-3xl font-bold text-gray-900">{valor}</p>
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }}>
+        <div style={{ background: 'var(--dls-navy)', border: '1px solid var(--dls-navy)', padding: '28px 32px' }}>
+          <div className="eyebrow" style={{ color: 'rgba(201,163,90,0.7)', marginBottom: 12 }}>Casos activos</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 48, lineHeight: 1, color: 'var(--dls-cream)' }}>
+            {casosActivos}
+          </div>
+        </div>
+        <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: '28px 32px' }}>
+          <div className="eyebrow" style={{ marginBottom: 12 }}>Casos totales</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 48, lineHeight: 1, color: 'var(--dls-navy)' }}>
+            {(casos ?? []).length}
+          </div>
+        </div>
+        <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: '28px 32px' }}>
+          <div className="eyebrow" style={{ marginBottom: 12 }}>Valoración</div>
+          {promedio ? (
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 48, lineHeight: 1, color: 'var(--dls-navy)' }}>
+                {promedio}
+              </div>
+              <div>
+                <StarRating value={Math.round(promedio)} readonly size="sm" />
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-taupe)', marginTop: 2 }}>
+                  {reviews?.length} reseña{reviews?.length !== 1 ? 's' : ''}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 28, color: 'var(--dls-taupe)', marginTop: 8 }}>
+              Sin valoraciones
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Lista casos */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div className="eyebrow">——— Casos asignados</div>
+          {(casos ?? []).length > 0 && (
+            <span style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--dls-taupe)' }}>
+              {(casos ?? []).length} caso{(casos ?? []).length !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+
+        {!casos || casos.length === 0 ? (
+          <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', borderLeft: '2px solid var(--dls-champagne)', padding: '64px 40px', textAlign: 'center' }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 22, color: 'var(--dls-taupe)' }}>
+              No tienes casos asignados aún
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {(casos ?? []).map((caso) => (
+              <Link
+                key={caso.id}
+                href={`/dashboard/abogado/casos/${caso.id}`}
+                className="caso-link-card"
+                style={{ textDecoration: 'none' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flex: 1 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 15, color: 'var(--dls-navy)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {caso.titulo}
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--dls-taupe)', letterSpacing: '0.04em' }}>
+                      {caso.area_legal}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                    <BadgeNoLeidos count={noLeidosPorCaso[caso.id] ?? 0} />
+                    <EstadoBadge estado={caso.estado} />
+                    <span style={{ color: 'var(--dls-champagne)', opacity: 0.5 }}><IconArrow /></span>
+                  </div>
+                </div>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-taupe)', marginTop: 12, letterSpacing: '0.06em' }}>
+                  Actualizado: {new Date(caso.updated_at).toLocaleDateString('es-CL')}
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

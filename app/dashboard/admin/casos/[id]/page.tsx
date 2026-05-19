@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation'
+import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
@@ -32,7 +32,7 @@ export default async function DetalleCasoAdmin({ params }: Props) {
     .eq('id', id)
     .single()
 
-  if (!caso) redirect('/dashboard/admin')
+  if (!caso) notFound()
 
   const { data: cliente } = await adminClient
     .from('profiles')

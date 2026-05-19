@@ -1,42 +1,46 @@
-import { createClient } from "@/lib/supabase/server"
-import { NextResponse } from "next/server"
-import { z } from "zod"
+// app/api/admin/asignar-abogado/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { enviarEmailAsignacion } from '@/lib/resend'
 
-const schema = z.object({
-  caso_id: z.string().uuid(),
-  abogado_id: z.string().uuid(),
-})
+export async function POST(req: NextRequest) {
+  try {
+    const { caso_id: casoId, abogado_id: abogadoId } = await req.json()
+    if (!casoId || !abogadoId) {
+      return NextResponse.json({ error: 'Faltan parámetros' }, { status: 400 })
+    }
 
-export async function POST(req: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+    const supabase = createAdminClient()
 
-  if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+    // Actualizar caso
+    const { data: caso, error: errorCaso } = await supabase
+      .from('casos')
+      .update({ abogado_id: abogadoId, estado: 'asignado', updated_at: new Date().toISOString() })
+      .eq('id', casoId)
+      .select('titulo')
+      .single()
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
+    if (errorCaso) throw errorCaso
 
-  if (profile?.role !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    // Obtener datos del abogado para el email
+    const { data: perfil } = await supabase
+      .from('profiles')
+      .select('nombre, apellido, email')
+      .eq('id', abogadoId)
+      .single()
+
+    if (perfil && caso && perfil.email) {
+      await enviarEmailAsignacion({
+        emailAbogado: perfil.email,
+        nombreAbogado: `${perfil.nombre} ${perfil.apellido}`,
+        tituloCaso: caso.titulo,
+        casoId,
+      }).catch((e) => console.error('Email asignación fallido:', e))
+    }
+
+    return NextResponse.json({ ok: true })
+  } catch (e) {
+    console.error(e)
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 })
   }
-
-  const body = await req.json()
-  const result = schema.safeParse(body)
-  if (!result.success) {
-    return NextResponse.json({ error: "Datos inválidos" }, { status: 400 })
-  }
-
-  const { caso_id, abogado_id } = result.data
-
-  const { error } = await supabase
-    .from("casos")
-    .update({ abogado_id, estado: "asignado" })
-    .eq("id", caso_id)
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json({ ok: true })
 }
