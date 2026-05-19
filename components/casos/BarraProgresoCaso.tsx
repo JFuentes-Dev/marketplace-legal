@@ -1,6 +1,8 @@
+// components/casos/BarraProgresoCaso.tsx
+
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useState, useTransition } from 'react'
 
 import type { EstadoCaso } from '@/lib/types/caso'
 
@@ -43,10 +45,6 @@ export function BarraProgresoCaso({
   const [estadoLocal, setEstadoLocal] =
     useState<EstadoCaso>(estado)
 
-  useEffect(() => {
-    setEstadoLocal(estado)
-  }, [estado])
-
   const indexActual = PASOS.findIndex(
     p => p.key === estadoLocal
   )
@@ -56,8 +54,9 @@ export function BarraProgresoCaso({
   ) {
     if (!casoId) return
 
-    if (nuevoEstado === estadoLocal)
+    if (nuevoEstado === estadoLocal) {
       return
+    }
 
     const labels: Record<
       EstadoCaso,
@@ -78,37 +77,41 @@ export function BarraProgresoCaso({
     const estadoAnterior =
       estadoLocal
 
-    // optimistic update
+    // optimistic UI
     setEstadoLocal(nuevoEstado)
 
-    startTransition(async () => {
-      try {
-        const res = await fetch(
-          '/api/casos/cambiar-estado',
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type':
-                'application/json',
-            },
-            body: JSON.stringify({
-              casoId,
-              estado: nuevoEstado,
-            }),
+    startTransition(() => {
+      void (async () => {
+        try {
+          const res = await fetch(
+            '/api/casos/cambiar-estado',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type':
+                  'application/json',
+              },
+              body: JSON.stringify({
+                casoId,
+                estado: nuevoEstado,
+              }),
+            }
+          )
+
+          if (!res.ok) {
+            throw new Error()
           }
-        )
+        } catch {
+          // rollback
+          setEstadoLocal(
+            estadoAnterior
+          )
 
-        if (!res.ok) {
-          throw new Error()
+          alert(
+            'No se pudo actualizar el estado'
+          )
         }
-      } catch {
-        // rollback
-        setEstadoLocal(estadoAnterior)
-
-        alert(
-          'No se pudo actualizar el estado'
-        )
-      }
+      })()
     })
   }
 
