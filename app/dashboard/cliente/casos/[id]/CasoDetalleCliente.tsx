@@ -1,6 +1,6 @@
 'use client'
 
-// app/dashboard/cliente/casos/[id]/CasoDetalleCliente.tsx
+// components/casos/CasoDetalleCliente.tsx
 
 import { useState } from 'react'
 import Link from 'next/link'
@@ -14,29 +14,17 @@ import {
   Shield,
   Calendar,
   FileText,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
   ExternalLink,
+  AlertCircle,
 } from 'lucide-react'
 import { MensajesPanel } from '@/components/casos/MensajesPanel'
 import { EstadoBadge } from '@/components/casos/EstadoBadge'
 import { FormularioReview } from '@/components/casos/FormularioReview'
 import { UploadDocumento } from '@/components/casos/UploadDocumento'
 import { ResumenIA } from '@/components/casos/ResumenIA'
+import { ESTADO_LABELS, type EstadoCaso, type Caso } from '@/lib/types/caso'
 
 // ─── Tipos ────────────────────────────────────────────────────
-
-interface Caso {
-  id: string
-  titulo: string
-  descripcion: string
-  area_legal: string
-  estado: 'pendiente' | 'asignado' | 'en_progreso' | 'cerrado'
-  created_at: string
-  abogado_id: string | null
-  cliente_id: string
-}
 
 interface Abogado {
   id: string
@@ -89,14 +77,23 @@ interface Props {
 
 // ─── Constantes ───────────────────────────────────────────────
 
-const ESTADOS_ORDEN = ['pendiente', 'asignado', 'en_progreso', 'cerrado'] as const
+// Hitos macro de la barra de progreso — igual que en CasoDetalleAbogado
+const HITOS: { key: EstadoCaso; label: string }[] = [
+  { key: 'pendiente',         label: 'Iniciado'  },
+  { key: 'asignado',          label: 'Asignado'  },
+  { key: 'proxima_audiencia', label: 'En curso'  },
+  { key: 'cerrado',           label: 'Cerrado'   },
+]
 
-const ESTADOS_LABEL: Record<string, string> = {
-  pendiente:   'Iniciado',
-  asignado:    'Asignado',
-  en_progreso: 'En proceso',
-  cerrado:     'Cerrado',
+function hitoIndex(estado: EstadoCaso): number {
+  if (estado === 'pendiente') return 0
+  if (estado === 'asignado')  return 1
+  if (estado === 'cerrado')   return 3
+  return 2 // cualquier estado intermedio = "En curso"
 }
+
+const ESTADOS_MACRO = new Set(['pendiente', 'asignado', 'cerrado'])
+const esIntermedio = (e: string) => !ESTADOS_MACRO.has(e)
 
 const TIPO_EVENTO: Record<string, { label: string; icon: string; bg: string; text: string }> = {
   audiencia:   { label: 'Audiencia',   icon: '⚖️', bg: 'bg-blue-50   border-blue-100',   text: 'bg-blue-100   text-blue-700'   },
@@ -138,155 +135,143 @@ export default function CasoDetalleCliente({
 }: Props) {
   const [chatOpen, setChatOpen] = useState(true)
 
-  const estadoIndex  = ESTADOS_ORDEN.indexOf(caso.estado as (typeof ESTADOS_ORDEN)[number])
+  const idx          = hitoIndex(caso.estado)
   const especialidades = parseEspecialidades(lawyerProfile?.especialidades)
-  const progressPct  = estadoIndex >= 0
-    ? (estadoIndex / (ESTADOS_ORDEN.length - 1)) * 100
-    : 0
   const casoCerrado  = caso.estado === 'cerrado'
 
   return (
-    <div className="min-h-screen bg-[#f5f0e8]">
+    <div style={{ minHeight: '100vh', background: 'var(--dls-cream)' }}>
 
-      {/* ── Nav superior ─────────────────────────────────── */}
-      <div className="bg-[#0f1f3d] text-white px-4 py-4 shadow-md">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link
-            href="/dashboard/cliente"
-            className="flex items-center gap-2 text-white/60 hover:text-white transition-colors text-sm"
-          >
-            <ArrowLeft className="w-4 h-4" />
+      {/* ── Nav superior ─────────────────────────────────────── */}
+      <div style={{ background: 'var(--dls-navy)', padding: '16px 24px' }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Link href="/dashboard/cliente" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(250,244,237,0.6)', fontSize: 13, textDecoration: 'none' }}>
+            <ArrowLeft size={14} />
             Mis casos
           </Link>
-          <EstadoBadge estado={caso.estado} />
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+            <EstadoBadge estado={caso.estado} macro />
+            {esIntermedio(caso.estado) && (
+              <span style={{ fontFamily: 'var(--font-body)', fontSize: 10, color: 'rgba(250,244,237,0.45)', letterSpacing: '0.06em' }}>
+                {ESTADO_LABELS[caso.estado]}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
 
-        {/* ── Encabezado ───────────────────────────────────── */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-[#0f1f3d] mb-1">{caso.titulo}</h1>
-          <p className="text-sm text-gray-500">
-            Área: <span className="font-medium text-gray-700">{caso.area_legal}</span>
-            {' · '}Creado el {formatFecha(caso.created_at)}
+        {/* ── Encabezado ───────────────────────────────────────── */}
+        <div style={{ marginBottom: 28 }}>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 'clamp(24px,3vw,36px)', color: 'var(--dls-navy)', marginBottom: 6 }}>
+            {caso.titulo}
+          </h1>
+          <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-taupe)' }}>
+            Área: <strong>{caso.area_legal}</strong> · Creado el {formatFecha(caso.created_at)}
           </p>
         </div>
 
-        {/* ── Barra de progreso ─────────────────────────────── */}
-        <div className="bg-white rounded-2xl px-8 py-6 mb-6 shadow-sm border border-gray-100">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-5">
+        {/* ── Barra de progreso ────────────────────────────────── */}
+        <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: '24px 28px', marginBottom: 24 }}>
+          <div style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 20 }}>
             Progreso del caso
-          </p>
-          <div className="relative flex items-start justify-between">
-            <div className="absolute top-4 left-0 right-0 h-0.5 bg-gray-200" />
-            <div
-              className="absolute top-4 left-0 h-0.5 bg-blue-600 transition-all duration-700"
-              style={{ width: `${progressPct}%` }}
-            />
-            {ESTADOS_ORDEN.map((estado, i) => {
-              const isPast    = i < estadoIndex
-              const isCurrent = i === estadoIndex
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            {HITOS.map((hito, i) => {
+              const completado = i <= idx
+              const activo     = i === idx
               return (
-                <div key={estado} className="relative z-10 flex flex-col items-center gap-2 flex-1">
-                  <div className={`
-                    w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all duration-300
-                    ${isCurrent
-                      ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-200'
-                      : isPast
-                        ? 'bg-white border-blue-400'
-                        : 'bg-white border-gray-300'}
-                  `}>
-                    {isPast    ? <CheckCircle2 className="w-4 h-4 text-blue-500" /> :
-                     isCurrent ? <Clock className="w-3.5 h-3.5 text-white" /> :
-                     <div className="w-2 h-2 rounded-full bg-gray-300" />}
+                <div key={hito.key} style={{ display: 'flex', alignItems: 'center', flex: i < HITOS.length - 1 ? 1 : 0 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: completado ? 'var(--dls-navy)' : 'var(--dls-hairline)', border: activo ? '2px solid var(--dls-champagne)' : '2px solid transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {completado && (
+                        <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                          <polyline points="2,6.5 5,9.5 11,3.5" stroke="var(--dls-champagne)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </div>
+                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: completado ? 'var(--dls-navy)' : 'var(--dls-taupe)', fontWeight: activo ? 700 : 400, whiteSpace: 'nowrap' }}>
+                      {hito.label}
+                    </span>
+                    {/* Sub-etiqueta en el hito "En curso" activo */}
+                    {activo && esIntermedio(caso.estado) && (
+                      <span style={{ fontFamily: 'var(--font-body)', fontSize: 9, color: 'var(--dls-champagne)', letterSpacing: '0.05em', marginTop: -4 }}>
+                        {ESTADO_LABELS[caso.estado]}
+                      </span>
+                    )}
                   </div>
-                  <span className={`
-                    text-xs font-medium text-center whitespace-nowrap
-                    ${isCurrent ? 'text-blue-600' : isPast ? 'text-gray-500' : 'text-gray-400'}
-                  `}>
-                    {ESTADOS_LABEL[estado]}
-                  </span>
+                  {i < HITOS.length - 1 && (
+                    <div style={{ flex: 1, height: 2, marginBottom: 18, marginLeft: 6, marginRight: 6, background: i < idx ? 'var(--dls-champagne)' : 'var(--dls-hairline)' }} />
+                  )}
                 </div>
               )
             })}
           </div>
 
-          {/* Resumen IA — debajo del stepper, dentro de la misma card */}
-          <ResumenIA casoId={caso.id} />
+          {/* Resumen IA */}
+          <div style={{ borderTop: '1px solid var(--dls-hairline)', marginTop: 24, paddingTop: 20 }}>
+            <ResumenIA casoId={caso.id} />
+          </div>
         </div>
 
-        {/* ── Grid principal ────────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        {/* ── Grid principal ────────────────────────────────────── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 24, alignItems: 'start' }}>
 
-          {/* ── Columna izquierda ─────────────────────────── */}
-          <div className="lg:col-span-2 space-y-6">
+          {/* ── Columna izquierda ──────────────────────────────── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-            {/* Card abogado */}
+            {/* Abogado asignado */}
             {abogado ? (
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">
+              <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: 24 }}>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 16 }}>
                   Abogado asignado
-                </p>
-                <div className="flex items-start gap-5">
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>
                   {abogado.avatar_url ? (
-                    <img
-                      src={abogado.avatar_url}
-                      alt={`${abogado.nombre} ${abogado.apellido}`}
-                      className="w-16 h-16 rounded-full object-cover flex-shrink-0 ring-2 ring-gray-100"
-                    />
+                    <img src={abogado.avatar_url} alt={`${abogado.nombre} ${abogado.apellido}`} style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
                   ) : (
-                    <div className="w-16 h-16 rounded-full bg-[#0f1f3d] flex items-center justify-center text-white text-xl font-bold flex-shrink-0 ring-2 ring-gray-100">
+                    <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--dls-navy)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--dls-cream)', fontSize: 18, fontWeight: 700, flexShrink: 0 }}>
                       {getInitials(abogado.nombre, abogado.apellido)}
                     </div>
                   )}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-bold text-lg text-[#0f1f3d] leading-tight">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
+                      <span style={{ fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 15, color: 'var(--dls-navy)' }}>
                         {abogado.nombre} {abogado.apellido}
-                      </h3>
+                      </span>
                       {lawyerProfile?.verified && (
-                        <span className="inline-flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-medium">
-                          <Shield className="w-3 h-3" />
-                          Verificado
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, background: 'rgba(16,185,129,0.08)', color: '#059669', border: '1px solid rgba(16,185,129,0.2)', padding: '2px 8px', fontFamily: 'var(--font-body)', fontWeight: 600 }}>
+                          <Shield size={10} /> Verificado
                         </span>
                       )}
                     </div>
                     {lawyerProfile?.years_experiencia != null && (
-                      <p className="text-sm text-gray-400 mt-0.5">
-                        {lawyerProfile.years_experiencia}{' '}
-                        {lawyerProfile.years_experiencia === 1 ? 'año' : 'años'} de experiencia
-                      </p>
+                      <div style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--dls-taupe)', marginBottom: 10 }}>
+                        {lawyerProfile.years_experiencia} {lawyerProfile.years_experiencia === 1 ? 'año' : 'años'} de experiencia
+                      </div>
                     )}
-                    <div className="mt-3 space-y-2">
-                      <a
-                        href={`mailto:${abogado.email}`}
-                        className="flex items-center gap-2.5 text-sm text-gray-700 hover:text-blue-600 transition-colors group"
-                      >
-                        <Mail className="w-4 h-4 text-gray-400 group-hover:text-blue-500 flex-shrink-0" />
-                        <span className="truncate">{abogado.email}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <a href={`mailto:${abogado.email}`} style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-taupe)', textDecoration: 'none' }}>
+                        <Mail size={13} /> {abogado.email}
                       </a>
                       {abogado.telefono && (
-                        <a
-                          href={`tel:${abogado.telefono}`}
-                          className="flex items-center gap-2.5 text-sm text-gray-700 hover:text-blue-600 transition-colors group"
-                        >
-                          <Phone className="w-4 h-4 text-gray-400 group-hover:text-blue-500 flex-shrink-0" />
-                          {abogado.telefono}
+                        <a href={`tel:${abogado.telefono}`} style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-taupe)', textDecoration: 'none' }}>
+                          <Phone size={13} /> {abogado.telefono}
                         </a>
                       )}
                     </div>
                     {especialidades.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-1.5">
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
                         {especialidades.map((esp) => (
-                          <span key={esp} className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2.5 py-1 rounded-full">
+                          <span key={esp} style={{ fontFamily: 'var(--font-body)', fontSize: 10, background: 'rgba(201,163,90,0.08)', color: 'var(--dls-champagne)', border: '1px solid rgba(201,163,90,0.2)', padding: '2px 8px', letterSpacing: '0.04em' }}>
                             {esp}
                           </span>
                         ))}
                       </div>
                     )}
                     {lawyerProfile?.bio && (
-                      <p className="mt-3 text-sm text-gray-500 leading-relaxed line-clamp-3">
+                      <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-taupe)', lineHeight: 1.6, marginTop: 10 }}>
                         {lawyerProfile.bio}
                       </p>
                     )}
@@ -294,13 +279,13 @@ export default function CasoDetalleCliente({
                 </div>
               </div>
             ) : (
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
+              <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', borderLeft: '2px solid var(--dls-champagne)', padding: 24 }}>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 12 }}>
                   Abogado asignado
-                </p>
-                <div className="flex items-center gap-3">
-                  <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0" />
-                  <p className="text-sm text-gray-500">
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <AlertCircle size={16} style={{ color: 'var(--dls-champagne)', flexShrink: 0 }} />
+                  <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-taupe)' }}>
                     Tu caso está en revisión. Te asignaremos un abogado a la brevedad.
                   </p>
                 </div>
@@ -308,64 +293,49 @@ export default function CasoDetalleCliente({
             )}
 
             {/* Descripción */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
+            <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: 24 }}>
+              <div style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 16 }}>
                 Descripción
-              </p>
-              <p className="text-gray-700 leading-relaxed whitespace-pre-wrap text-sm">
+              </div>
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: 1.7, color: 'var(--dls-navy)', whiteSpace: 'pre-wrap' }}>
                 {caso.descripcion}
               </p>
             </div>
 
             {/* Próximos eventos */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">
+            <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: 24 }}>
+              <div style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 16 }}>
                 Próximos eventos
-              </p>
+              </div>
               {eventos.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-10 text-gray-300">
-                  <Calendar className="w-10 h-10 mb-2" />
-                  <p className="text-sm text-gray-400">No hay eventos programados</p>
-                  <p className="text-xs text-gray-300 mt-1">
+                <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                  <Calendar size={32} style={{ opacity: 0.2, margin: '0 auto 8px', color: 'var(--dls-taupe)' }} />
+                  <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-taupe)' }}>No hay eventos programados</p>
+                  <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-taupe)', marginTop: 4, opacity: 0.7 }}>
                     Tu abogado actualizará esta sección cuando haya novedades
                   </p>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {eventos.map((evento) => {
                     const info   = TIPO_EVENTO[evento.tipo] ?? TIPO_EVENTO.otro
                     const isPast = !evento.completado && new Date(evento.fecha) < new Date()
                     return (
-                      <div
-                        key={evento.id}
-                        className={`flex items-start gap-4 p-4 rounded-xl border transition-all
-                          ${evento.completado
-                            ? 'bg-gray-50 border-gray-100 opacity-60'
-                            : isPast
-                              ? 'bg-red-50 border-red-100'
-                              : info.bg}
-                        `}
-                      >
-                        <span className="text-2xl leading-none mt-0.5 flex-shrink-0">{info.icon}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm text-[#0f1f3d]">{evento.titulo}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium
-                              ${evento.completado
-                                ? 'bg-gray-100 text-gray-500'
-                                : isPast
-                                  ? 'bg-red-100 text-red-600'
-                                  : info.text}
-                            `}>
+                      <div key={evento.id} className={`${evento.completado ? 'bg-gray-50 border-gray-100 opacity-60' : isPast ? 'bg-red-50 border-red-100' : info.bg}`}
+                        style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 16px', border: '1px solid var(--dls-hairline)' }}>
+                        <span style={{ fontSize: 20, flexShrink: 0, marginTop: 2 }}>{info.icon}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                            <span style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 13, color: 'var(--dls-navy)' }}>{evento.titulo}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${evento.completado ? 'bg-gray-100 text-gray-500' : isPast ? 'bg-red-100 text-red-600' : info.text}`}>
                               {evento.completado ? 'Completado' : isPast ? 'Vencido' : info.label}
                             </span>
                           </div>
-                          <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {formatFecha(evento.fecha)}
+                          <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-taupe)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Calendar size={10} /> {formatFecha(evento.fecha)}
                           </p>
                           {evento.descripcion && (
-                            <p className="text-sm text-gray-600 mt-1.5 leading-relaxed">{evento.descripcion}</p>
+                            <p style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--dls-navy)', marginTop: 6, lineHeight: 1.5 }}>{evento.descripcion}</p>
                           )}
                         </div>
                       </div>
@@ -376,43 +346,36 @@ export default function CasoDetalleCliente({
             </div>
 
             {/* Documentos */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">
+            <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: 24 }}>
+              <div style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 16 }}>
                 Documentos
-              </p>
+              </div>
               {documentos.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-8 text-gray-300">
-                  <FileText className="w-10 h-10 mb-2" />
-                  <p className="text-sm text-gray-400">No hay documentos adjuntos aún</p>
+                <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                  <FileText size={32} style={{ opacity: 0.2, margin: '0 auto 8px', color: 'var(--dls-taupe)' }} />
+                  <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-taupe)' }}>No hay documentos adjuntos aún</p>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
                   {documentos.map((doc) => (
-                    <a
-                      key={doc.id}
-                      href={doc.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 p-3.5 rounded-xl border border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-all group"
-                    >
-                      <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-100 transition-colors">
-                        <FileText className="w-5 h-5 text-blue-500" />
+                    <a key={doc.id} href={doc.url} target="_blank" rel="noopener noreferrer"
+                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', border: '1px solid var(--dls-hairline)', textDecoration: 'none' }}>
+                      <div style={{ width: 36, height: 36, background: 'rgba(201,163,90,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <FileText size={16} style={{ color: 'var(--dls-champagne)' }} />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800 group-hover:text-blue-700 truncate">{doc.nombre}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{formatFecha(doc.created_at)}</p>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 13, color: 'var(--dls-navy)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.nombre}</div>
+                        <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-taupe)', marginTop: 2 }}>{formatFecha(doc.created_at)}</div>
                       </div>
-                      <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-400 flex-shrink-0" />
+                      <ExternalLink size={13} style={{ color: 'var(--dls-taupe)', flexShrink: 0 }} />
                     </a>
                   ))}
                 </div>
               )}
-
-              {/* Upload — oculto si caso cerrado */}
               <UploadDocumento casoId={caso.id} cerrado={casoCerrado} />
             </div>
 
-            {/* Review — solo si caso cerrado */}
+            {/* Review */}
             {casoCerrado && caso.abogado_id && abogado && (
               <FormularioReview
                 casoId={caso.id}
@@ -424,51 +387,36 @@ export default function CasoDetalleCliente({
 
           </div>
 
-          {/* ── Columna derecha (chat) ────────────────────── */}
-          <div className="lg:col-span-1">
-            <div className="sticky top-6">
+          {/* ── Columna derecha (chat) ─────────────────────────── */}
+          <div style={{ position: 'sticky', top: 80 }}>
+            <button
+              onClick={() => setChatOpen(o => !o)}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', background: 'var(--dls-navy)', color: 'var(--dls-cream)', border: 'none', cursor: 'pointer' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <MessageCircle size={14} />
+                <span style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 13, letterSpacing: '0.04em' }}>Mensajes</span>
+              </div>
+              {chatOpen ? <ChevronUp size={14} style={{ opacity: 0.5 }} /> : <ChevronDown size={14} style={{ opacity: 0.5 }} />}
+            </button>
 
-              {/* Toggle header */}
-              <button
-                onClick={() => setChatOpen((prev) => !prev)}
-                className="w-full flex items-center justify-between px-5 py-4 bg-[#0f1f3d] text-white rounded-t-2xl hover:bg-[#1a3260] transition-colors"
-              >
-                <div className="flex items-center gap-2.5">
-                  <MessageCircle className="w-4 h-4" />
-                  <span className="font-semibold text-sm tracking-wide">Mensajes</span>
-                </div>
-                {chatOpen
-                  ? <ChevronUp className="w-4 h-4 text-white/60" />
-                  : <ChevronDown className="w-4 h-4 text-white/60" />}
-              </button>
-
-              {/* Sin abogado asignado aún */}
-              {!caso.abogado_id ? (
-                <div className="border border-t-0 border-yellow-200 rounded-b-2xl bg-yellow-50 px-5 py-4">
-                  <p className="text-sm text-yellow-800">
-                    La mensajería se habilitará cuando un abogado sea asignado a tu caso.
-                  </p>
-                </div>
-              ) : chatOpen ? (
-                <div
-                  className="border border-t-0 border-gray-200 rounded-b-2xl overflow-hidden bg-white"
-                  style={{ height: '540px' }}
-                >
-                  <MensajesPanel
-                    casoId={caso.id}
-                    userId={userId}
-                    cerrado={casoCerrado}
-                  />
-                </div>
-              ) : (
-                <div className="border border-t-0 border-gray-200 rounded-b-2xl bg-white/50 px-4 py-4 text-center">
-                  <p className="text-xs text-gray-400">
-                    Haz clic para ver los mensajes con tu abogado
-                  </p>
-                </div>
-              )}
-
-            </div>
+            {!caso.abogado_id ? (
+              <div style={{ border: '1px solid var(--dls-hairline)', borderTop: 'none', padding: 16, background: 'rgba(201,163,90,0.04)' }}>
+                <p style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--dls-taupe)' }}>
+                  La mensajería se habilitará cuando un abogado sea asignado a tu caso.
+                </p>
+              </div>
+            ) : chatOpen ? (
+              <div style={{ border: '1px solid var(--dls-hairline)', borderTop: 'none', background: 'var(--dls-white)', height: 540, overflow: 'hidden' }}>
+                <MensajesPanel casoId={caso.id} userId={userId} cerrado={casoCerrado} />
+              </div>
+            ) : (
+              <div style={{ border: '1px solid var(--dls-hairline)', borderTop: 'none', padding: 16, textAlign: 'center', background: 'var(--dls-white)' }}>
+                <p style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--dls-taupe)' }}>
+                  Haz clic para ver los mensajes con tu abogado
+                </p>
+              </div>
+            )}
           </div>
 
         </div>
