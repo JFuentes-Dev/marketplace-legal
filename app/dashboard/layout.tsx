@@ -28,7 +28,6 @@ export default async function DashboardLayout({
   const navLinks: Record<string, { href: string; label: string }[]> = {
     cliente: [
       { href: '/dashboard/cliente', label: 'Mis casos' },
-      { href: '/abogados', label: 'Ver abogados' },
     ],
     abogado: [
       { href: '/dashboard/abogado', label: 'Mis casos' },

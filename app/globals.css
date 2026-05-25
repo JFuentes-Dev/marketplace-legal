@@ -76,6 +76,9 @@
     @apply border-border outline-ring/50;
     box-sizing: border-box;
   }
+  .stat-number {
+    font-variant-numeric: lining-nums tabular-nums;
+  }
 
   html {
     font-family: var(--font-body);
@@ -155,7 +158,9 @@
 
 /* ─── Components ────────────────────────────────────────────────── */
 @layer components {
-
+  .stat-number {
+      font-variant-numeric: lining-nums tabular-nums;
+    }
   /* CTA primary */
   .btn-primary {
     display: inline-flex;
@@ -398,3 +403,4 @@
   background: var(--dls-champagne);
   color: var(--dls-navy);
 }
+

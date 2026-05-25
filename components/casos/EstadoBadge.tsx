@@ -1,26 +1,35 @@
 // components/casos/EstadoBadge.tsx
 import React from 'react'
-
-type Estado = 'pendiente' | 'asignado' | 'en_progreso' | 'cerrado'
-
-const config: Record<Estado, { label: string; bg: string; color: string; dot: string }> = {
-  pendiente:   { label: 'Pendiente',   bg: 'rgba(201,163,90,0.12)',  color: 'var(--dls-champagne)', dot: 'var(--dls-champagne)' },
-  asignado:    { label: 'Asignado',    bg: 'rgba(42,58,92,0.08)',    color: 'var(--dls-navy-mid)',  dot: 'var(--dls-navy-mid)' },
-  en_progreso: { label: 'En progreso', bg: 'rgba(74,222,128,0.1)',   color: '#16a34a',              dot: '#4ade80' },
-  cerrado:     { label: 'Cerrado',     bg: 'rgba(122,42,56,0.1)',    color: 'var(--dls-burgundy)',  dot: 'var(--dls-burgundy)' },
-}
+import { ESTADO_COLORS, ESTADO_LABELS, ESTADOS_ABOGADO, type EstadoCaso } from '@/lib/types/caso'
 
 interface Props {
   estado: string
+  /** Si true, colapsa todos los estados intermedios a "En curso" */
+  macro?: boolean
 }
 
-export function EstadoBadge({ estado }: Props) {
-  const cfg = config[estado as Estado] ?? {
-    label: estado,
+// Cast a string[] para evitar conflictos de narrowing con includes()
+const ESTADOS_INTERMEDIOS: string[] = ESTADOS_ABOGADO.filter(e => e !== 'cerrado')
+
+export function EstadoBadge({ estado, macro = false }: Props) {
+  const estadoCast = estado as EstadoCaso
+  const esIntermedio = ESTADOS_INTERMEDIOS.includes(estado)
+
+  const cfg = ESTADO_COLORS[estadoCast] ?? {
     bg: 'rgba(166,143,133,0.1)',
     color: 'var(--dls-taupe)',
     dot: 'var(--dls-taupe)',
   }
+
+  // En modo macro, estados intermedios muestran color de proxima_audiencia (azul índigo)
+  // y label "En curso"
+  const cfgMacro = macro && esIntermedio
+    ? ESTADO_COLORS['proxima_audiencia']
+    : cfg
+
+  const label = macro && esIntermedio
+    ? 'En curso'
+    : (ESTADO_LABELS[estadoCast] ?? estado)
 
   return (
     <span
@@ -29,13 +38,13 @@ export function EstadoBadge({ estado }: Props) {
         alignItems: 'center',
         gap: 6,
         padding: '3px 10px',
-        background: cfg.bg,
+        background: cfgMacro.bg,
         fontFamily: 'var(--font-body)',
         fontWeight: 600,
         fontSize: 9,
         letterSpacing: '0.2em',
         textTransform: 'uppercase',
-        color: cfg.color,
+        color: cfgMacro.color,
       }}
     >
       <span
@@ -43,11 +52,11 @@ export function EstadoBadge({ estado }: Props) {
           width: 6,
           height: 6,
           borderRadius: '50%',
-          background: cfg.dot,
+          background: cfgMacro.dot,
           flexShrink: 0,
         }}
       />
-      {cfg.label}
+      {label}
     </span>
   )
 }

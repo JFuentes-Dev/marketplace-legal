@@ -1,5 +1,6 @@
+// app/api/casos/cambiar-estado/route.ts
 import { NextRequest } from 'next/server'
-
+import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 
 export async function POST(req: NextRequest) {
@@ -10,22 +11,13 @@ export async function POST(req: NextRequest) {
   } = await supabase.auth.getUser()
 
   if (!user) {
-    return Response.json(
-      { error: 'No autenticado' },
-      { status: 401 }
-    )
+    return Response.json({ error: 'No autenticado' }, { status: 401 })
   }
 
-  const {
-    casoId,
-    estado,
-  } = await req.json()
+  const { casoId, estado } = await req.json()
 
   if (!casoId || !estado) {
-    return Response.json(
-      { error: 'Datos incompletos' },
-      { status: 400 }
-    )
+    return Response.json({ error: 'Datos incompletos' }, { status: 400 })
   }
 
   const { error } = await supabase
@@ -38,13 +30,12 @@ export async function POST(req: NextRequest) {
     .eq('abogado_id', user.id)
 
   if (error) {
-    return Response.json(
-      { error: error.message },
-      { status: 500 }
-    )
+    return Response.json({ error: error.message }, { status: 500 })
   }
 
-  return Response.json({
-    ok: true,
-  })
+  // Invalida caché del detalle del caso y del dashboard
+  revalidatePath(`/dashboard/abogado/casos/${casoId}`)
+  revalidatePath('/dashboard/abogado')
+
+  return Response.json({ ok: true })
 }
