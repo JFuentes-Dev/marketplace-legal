@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { NavLogo } from "@/components/shared/NavLogo";
 import { createClient } from "@/lib/supabase/server";
+import { LogoutButton } from '@/components/shared/LogoutButton'
 
 const IconCheck = () => (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -48,11 +49,7 @@ export default async function LandingPage() {
                 <Link href={dashboardHref} className="nav-link" style={{ color: 'rgba(250,244,237,0.55)', fontSize: 12 }}>
                   {perfil.nombre}
                 </Link>
-                <form action="/auth/signout" method="post">
-                  <button type="submit" className="nav-link" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                    Cerrar sesión
-                  </button>
-                </form>
+                <LogoutButton />
               </>
             ) : (
               <>
