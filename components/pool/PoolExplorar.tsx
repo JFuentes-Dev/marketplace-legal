@@ -302,7 +302,18 @@ export function PoolExplorar({ casos, casosPostulados, puntosRestantes, postulac
               const nDocs = (documentosPorCaso[caso.id] ?? []).length
               return (
                 <button key={caso.id} type="button" onClick={() => setSeleccionado(caso)}
-                  style={{ width: '100%', textAlign: 'left', padding: '14px 16px', borderBottom: '1px solid var(--dls-hairline)', borderLeft: activo ? '3px solid var(--dls-champagne)' : '3px solid transparent', background: activo ? 'rgba(201,163,90,0.06)' : 'transparent', cursor: 'pointer', border: 'none', borderBottom: '1px solid var(--dls-hairline)', borderLeft: activo ? '3px solid var(--dls-champagne)' : '3px solid transparent', background: activo ? 'rgba(201,163,90,0.06)' : 'transparent', transition: 'background 0.12s', position: 'relative' }}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '14px 16px',
+                    cursor: 'pointer',
+                    border: 'none',
+                    borderBottom: '1px solid var(--dls-hairline)',
+                    borderLeft: activo ? '3px solid var(--dls-champagne)' : '3px solid transparent',
+                    background: activo ? 'rgba(201,163,90,0.06)' : 'transparent',
+                    transition: 'background 0.12s',
+                    position: 'relative'
+                    }}
                   onMouseEnter={e => { if (!activo) e.currentTarget.style.background = 'rgba(15,30,58,0.03)' }}
                   onMouseLeave={e => { if (!activo) e.currentTarget.style.background = activo ? 'rgba(201,163,90,0.06)' : 'transparent' }}>
                   <p style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 13, color: 'var(--dls-navy)', margin: '0 0 5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: postulado ? 70 : 0 }}>
