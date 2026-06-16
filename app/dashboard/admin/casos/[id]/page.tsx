@@ -1,8 +1,12 @@
+// app/dashboard/admin/casos/[id]/page.tsx
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
 import AsignarAbogado from './AsignarAbogado'
+import AceptarPostulacion from './AceptarPostulacion'
+import { EstadoBadge } from '@/components/casos/EstadoBadge'
+import type { EstadoCaso } from '@/lib/types/caso'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -12,23 +16,16 @@ export default async function DetalleCasoAdmin({ params }: Props) {
   const { id } = await params
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
+  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   if (profile?.role !== 'admin') redirect('/dashboard')
 
-  // A partir de aquí usamos adminClient para bypasear RLS
   const adminClient = createAdminClient()
 
   const { data: caso } = await adminClient
     .from('casos')
-    .select('id, titulo, descripcion, area_legal, estado, created_at, abogado_id, cliente_id')
+    .select('id, titulo, descripcion, area_legal, estado, created_at, abogado_id, cliente_id, postulaciones_count')
     .eq('id', id)
     .single()
 
@@ -40,68 +37,151 @@ export default async function DetalleCasoAdmin({ params }: Props) {
     .eq('id', caso.cliente_id)
     .single()
 
+  // Postulaciones del caso (solo si está pendiente sin abogado)
+  const { data: postulacionesRaw } = await adminClient
+    .from('postulaciones')
+    .select(`
+      id, abogado_id, mensaje, estado, created_at,
+      profiles!postulaciones_abogado_id_fkey(nombre, apellido),
+      lawyer_profiles!postulaciones_abogado_id_fkey(especialidades)
+    `)
+    .eq('caso_id', id)
+    .eq('estado', 'pendiente')
+    .order('created_at', { ascending: true })
+
+  const postulaciones = (postulacionesRaw ?? []).map((p) => {
+    const perfil = Array.isArray(p.profiles) ? p.profiles[0] : p.profiles
+    const lp = Array.isArray(p.lawyer_profiles) ? p.lawyer_profiles[0] : p.lawyer_profiles
+    return {
+      id: p.id,
+      abogado_id: p.abogado_id,
+      nombre: perfil?.nombre ?? '',
+      apellido: perfil?.apellido ?? '',
+      especialidades: (lp?.especialidades as string[]) ?? [],
+      mensaje: p.mensaje,
+      created_at: p.created_at,
+    }
+  })
+
+  // Abogados para asignación manual
   const { data: abogados } = await adminClient
     .from('lawyer_profiles')
     .select('id, especialidades, profiles(nombre, apellido)')
     .eq('verified', true)
 
-  const ESTADO_ESTILOS: Record<string, string> = {
-    pendiente: "bg-yellow-100 text-yellow-700",
-    asignado: "bg-blue-100 text-blue-700",
-    en_progreso: "bg-purple-100 text-purple-700",
-    cerrado: "bg-gray-100 text-gray-500",
-  }
-
   return (
-    <main className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-2xl mx-auto space-y-6">
-        <Link
-          href="/dashboard/admin"
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          ← Volver al panel
-        </Link>
+    <div style={{ maxWidth: 800, margin: '0 auto' }}>
 
-        <div className="bg-white border rounded-xl p-6 space-y-4">
-          <div className="flex items-start justify-between gap-4">
-            <h1 className="text-xl font-semibold">{caso.titulo}</h1>
-            <span className={`text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap ${ESTADO_ESTILOS[caso.estado] ?? "bg-gray-100"}`}>
-              {caso.estado}
-            </span>
+      {/* Volver */}
+      <Link
+        href="/dashboard/admin"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          fontFamily: 'var(--font-body)',
+          fontSize: 11,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          color: 'var(--dls-taupe)',
+          textDecoration: 'none',
+          marginBottom: 28,
+        }}
+      >
+        ← Volver al panel
+      </Link>
+
+      {/* Header del caso */}
+      <div
+        style={{
+          background: 'var(--dls-white)',
+          border: '1px solid var(--dls-hairline)',
+          padding: '28px',
+          marginBottom: 20,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 26, color: 'var(--dls-navy)', lineHeight: 1.2 }}>
+            {caso.titulo}
+          </h1>
+          <EstadoBadge estado={caso.estado as EstadoCaso} />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+          <div>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 4 }}>Área</p>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--dls-navy)' }}>{caso.area_legal}</p>
           </div>
-
-          <div className="text-sm text-gray-500 space-y-1">
-            <p><span className="font-medium text-gray-700">Área:</span> {caso.area_legal}</p>
-            <p>
-              <span className="font-medium text-gray-700">Cliente:</span>{" "}
+          <div>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 4 }}>Creado</p>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--dls-navy)' }}>
+              {new Date(caso.created_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+          </div>
+          <div>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 4 }}>Cliente</p>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--dls-navy)' }}>
               {cliente?.nombre} {cliente?.apellido} · {cliente?.email}
             </p>
-            <p><span className="font-medium text-gray-700">Creado:</span> {new Date(caso.created_at).toLocaleDateString('es-CL')}</p>
           </div>
-
           <div>
-            <p className="text-sm font-medium text-gray-700 mb-1">Descripción</p>
-            <p className="text-sm text-gray-600 leading-relaxed">{caso.descripcion}</p>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 4 }}>Postulaciones</p>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--dls-navy)' }}>
+              {caso.postulaciones_count ?? 0} / 3
+            </p>
           </div>
         </div>
 
-        <div className="bg-white border rounded-xl p-6 space-y-4">
-          <h2 className="font-semibold">Asignar abogado</h2>
-          <AsignarAbogado
-            casoId={caso.id}
-            abogadoActualId={caso.abogado_id}
-            abogados={(abogados ?? []).map((a) => {
-              const perfil = a.profiles as { nombre: string; apellido: string } | { nombre: string; apellido: string }[] | null
-              const p = Array.isArray(perfil) ? perfil[0] : perfil
-              return {
-                id: a.id,
-                nombre: `${p?.nombre ?? ''} ${p?.apellido ?? ''}`.trim(),
-                especialidades: (a.especialidades as string[]) ?? [],
-              }
-            })}
-          />
+        <div>
+          <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 8 }}>Descripción</p>
+          <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: 1.75, color: 'var(--dls-navy-mid)' }}>{caso.descripcion}</p>
         </div>
       </div>
-    </main>
+
+      {/* Postulaciones del pool */}
+      {caso.estado === 'pendiente' && !caso.abogado_id && (
+        <div
+          style={{
+            background: 'var(--dls-white)',
+            border: '1px solid var(--dls-hairline)',
+            padding: '28px',
+            marginBottom: 20,
+          }}
+        >
+          <div className="eyebrow" style={{ marginBottom: 6, color: 'var(--dls-navy)' }}>Postulaciones recibidas</div>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 20, color: 'var(--dls-navy)', marginBottom: 20 }}>
+            Abogados interesados
+          </h2>
+          <AceptarPostulacion casoId={caso.id} postulaciones={postulaciones} />
+        </div>
+      )}
+
+      {/* Asignación manual */}
+      <div
+        style={{
+          background: 'var(--dls-white)',
+          border: '1px solid var(--dls-hairline)',
+          padding: '28px',
+        }}
+      >
+        <div className="eyebrow" style={{ marginBottom: 6, color: 'var(--dls-navy)' }}>Asignación manual</div>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 20, color: 'var(--dls-navy)', marginBottom: 20 }}>
+          Asignar abogado directamente
+        </h2>
+        <AsignarAbogado
+          casoId={caso.id}
+          abogadoActualId={caso.abogado_id}
+          abogados={(abogados ?? []).map((a) => {
+            const perfil = a.profiles as { nombre: string; apellido: string } | { nombre: string; apellido: string }[] | null
+            const p = Array.isArray(perfil) ? perfil[0] : perfil
+            return {
+              id: a.id,
+              nombre: `${p?.nombre ?? ''} ${p?.apellido ?? ''}`.trim(),
+              especialidades: (a.especialidades as string[]) ?? [],
+            }
+          })}
+        />
+      </div>
+    </div>
   )
 }

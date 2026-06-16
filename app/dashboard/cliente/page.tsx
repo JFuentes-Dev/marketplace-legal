@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { EstadoBadge } from '@/components/casos/EstadoBadge'
 import { BadgeNoLeidos } from '@/components/ui/badge'
+import { VincularCodigo } from '@/components/cliente/VincularCodigo'
 import { ESTADO_LABELS, type EstadoCaso } from '@/lib/types/caso'
 
 const ESTADOS_MACRO = new Set(['pendiente', 'asignado', 'cerrado'])
@@ -85,10 +86,13 @@ export default async function DashboardClientePage() {
             </em>
           </h1>
         </div>
-        <Link href="/dashboard/cliente/casos/nuevo" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          <IconPlus />
-          <span>Nuevo caso</span>
-        </Link>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <VincularCodigo />
+          <Link href="/dashboard/cliente/casos/nuevo" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <IconPlus />
+            <span>Nuevo caso</span>
+          </Link>
+        </div>
       </div>
 
       {/* Stats */}
@@ -125,10 +129,12 @@ export default async function DashboardClientePage() {
             <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 22, color: 'var(--dls-taupe)', marginBottom: 16 }}>
               No tienes casos aún
             </div>
-            <Link href="/dashboard/cliente/casos/nuevo" className="btn-secondary">
-              <span>Crear tu primer caso</span>
-              <IconArrow />
-            </Link>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <Link href="/dashboard/cliente/casos/nuevo" className="btn-secondary">
+                <span>Crear tu primer caso</span>
+                <IconArrow />
+              </Link>
+            </div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>

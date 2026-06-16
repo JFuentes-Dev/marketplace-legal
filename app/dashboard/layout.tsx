@@ -31,6 +31,7 @@ export default async function DashboardLayout({
     ],
     abogado: [
       { href: '/dashboard/abogado', label: 'Mis casos' },
+      { href: '/dashboard/abogado/explorar', label: 'Explorar' },
       { href: '/dashboard/abogado/perfil', label: 'Mi perfil' },
     ],
     admin: [

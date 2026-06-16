@@ -2,6 +2,7 @@ import Link from "next/link";
 import { NavLogo } from "@/components/shared/NavLogo";
 import { createClient } from "@/lib/supabase/server";
 import { LogoutButton } from '@/components/shared/LogoutButton'
+import { CasoAnonimoWidget } from '@/components/landing/CasoAnonimoWidget'
 
 const IconCheck = () => (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -54,6 +55,7 @@ export default async function LandingPage() {
             ) : (
               <>
                 <Link href="/abogados" className="nav-link">Ver abogados</Link>
+                <Link href="/seguimiento" className="nav-link">Seguimiento</Link>
                 <Link href="/login" className="nav-link">Iniciar sesión</Link>
                 <Link href="/registro" className="btn-primary" style={{ padding: "10px 20px", fontSize: 10 }}>
                   <span>Registrarse</span>
@@ -80,8 +82,9 @@ export default async function LandingPage() {
               <p className="animate-fade-up delay-200" style={{ fontFamily: "var(--font-body)", fontSize: 17, lineHeight: 1.7, color: "var(--dls-navy-mid)", marginBottom: 40, maxWidth: 440 }}>
                 Conectamos personas con abogados verificados. Acompañamos cada proceso legal con claridad, transparencia y compromiso profesional.
               </p>
+              {/* ── CTAs hero — "Necesito un abogado" abre el drawer ── */}
               <div className="animate-fade-up delay-300" style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
-                <Link href="/registro?role=cliente" className="btn-primary"><span>Necesito un abogado</span><IconArrow /></Link>
+                <CasoAnonimoWidget />
                 <Link href="/registro?role=abogado" className="btn-secondary"><span>Soy abogado</span><IconArrow /></Link>
               </div>
               <div className="animate-fade-up delay-400" style={{ display: "flex", gap: 40, marginTop: 56, paddingTop: 32, borderTop: "1px solid var(--dls-hairline)" }}>
@@ -137,9 +140,9 @@ export default async function LandingPage() {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 2 }}>
             {[
-              { roman: "I",   title: "Publica tu caso",         desc: "Describe tu situación y el área en la que necesitas ayuda. Sin compromiso, sin costo inicial." },
-              { roman: "II",  title: "Te asignamos un abogado", desc: "Un profesional verificado y especialista en tu área evalúa tu caso y te contacta." },
-              { roman: "III", title: "Resuelve con claridad",   desc: "Comunícate directamente desde la plataforma y sigue el progreso de tu proceso legal." },
+              { roman: "I",   title: "Cuéntanos tu caso",        desc: "Describe tu situación sin necesidad de crear cuenta. Recibirás un código de seguimiento al instante." },
+              { roman: "II",  title: "Te asignamos un abogado",  desc: "Un profesional verificado y especialista en tu área evalúa tu caso y te contacta." },
+              { roman: "III", title: "Resuelve con claridad",    desc: "Comunícate directamente desde la plataforma y sigue el progreso de tu proceso legal." },
             ].map((step, i) => (
               <div key={step.roman} className="card-dls" style={{ background: i === 1 ? "var(--dls-navy)" : "var(--dls-white)", borderColor: i === 1 ? "var(--dls-navy)" : "var(--dls-hairline)", padding: "48px 40px" }}>
                 <div className="roman-number" style={{ fontSize: 11, color: "var(--dls-champagne)", marginBottom: 24, display: "flex", alignItems: "center", gap: 8 }}>
@@ -172,7 +175,7 @@ export default async function LandingPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
               {[
                 { title: "Abogados verificados",  desc: "Validamos RUT, número de colegio y experiencia antes de publicar cualquier perfil." },
-                { title: "Especialidades claras", desc: "Filtra por área legal: familia, laboral, civil, penal, inmigración y más." },
+                { title: "Sin cuenta requerida",  desc: "Publica tu caso de inmediato. Recibes un código de seguimiento y puedes vincularlo cuando quieras." },
                 { title: "Comunicación directa",  desc: "Mensajería integrada con tiempo real para coordinar sin salir de la plataforma." },
                 { title: "Seguimiento del caso",  desc: "Conoce el estado en todo momento: pendiente, asignado, en progreso o cerrado." },
               ].map((b) => (
@@ -230,6 +233,7 @@ export default async function LandingPage() {
           </div>
           <div style={{ display: "flex", gap: 32, alignItems: "center" }}>
             <Link href="/abogados" className="nav-link" style={{ fontSize: 10 }}>Abogados</Link>
+            <Link href="/seguimiento" className="nav-link" style={{ fontSize: 10 }}>Seguimiento</Link>
             <Link href="/login"    className="nav-link" style={{ fontSize: 10 }}>Ingresar</Link>
             <Link href="/registro" className="nav-link" style={{ fontSize: 10 }}>Registrarse</Link>
           </div>

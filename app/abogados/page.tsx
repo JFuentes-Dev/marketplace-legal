@@ -1,8 +1,10 @@
 // app/abogados/page.tsx
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { StarRating } from '@/components/ui/star-rating'
 import { FiltrosAbogados } from '@/components/abogados/FiltrosAbogados'
+import { AbogadoCard } from '@/components/abogados/AbogadoCard'
+import { NavLogo } from '@/components/shared/NavLogo'
+import { LogoutButton } from '@/components/shared/LogoutButton'
 
 interface SearchParams {
   especialidad?: string
@@ -20,9 +22,27 @@ export const metadata = {
   description: 'Encuentra el abogado ideal para tu caso. Filtra por especialidad, tarifa y experiencia.',
 }
 
+const IconArrow = () => (
+  <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="2" y1="7" x2="12" y2="7" /><polyline points="8,3 12,7 8,11" />
+  </svg>
+)
+
 export default async function AbogadosPage({ searchParams }: Props) {
   const sp = await searchParams
   const supabase = await createClient()
+
+  // Usuario logueado para nav
+  const { data: { user } } = await supabase.auth.getUser()
+  let perfil: { nombre: string | null; role: string | null } | null = null
+  if (user) {
+    const { data } = await supabase.from('profiles').select('nombre, role').eq('id', user.id).single()
+    perfil = data
+  }
+  const dashboardHref =
+    perfil?.role === 'abogado' ? '/dashboard/abogado' :
+    perfil?.role === 'admin'   ? '/dashboard/admin' :
+                                 '/dashboard/cliente'
 
   let query = supabase
     .from('lawyer_profiles')
@@ -37,19 +57,13 @@ export default async function AbogadosPage({ searchParams }: Props) {
     `)
     .eq('verified', true)
 
-  if (sp.especialidad) {
-    query = query.contains('especialidades', [sp.especialidad])
-  }
-  if (sp.tarifa_max) {
-    query = query.lte('tarifa_hora', parseInt(sp.tarifa_max))
-  }
-  if (sp.experiencia_min) {
-    query = query.gte('years_experiencia', parseInt(sp.experiencia_min))
-  }
+  if (sp.especialidad) query = query.contains('especialidades', [sp.especialidad])
+  if (sp.tarifa_max)   query = query.lte('tarifa_hora', parseInt(sp.tarifa_max))
+  if (sp.experiencia_min) query = query.gte('years_experiencia', parseInt(sp.experiencia_min))
 
   const { data: abogados } = await query.order('years_experiencia', { ascending: false })
 
-  // Reviews promedio por abogado
+  // Reviews promedio
   const abogadoIds = (abogados ?? []).map((a) => a.id)
   const reviewsPorAbogado: Record<string, { promedio: number; total: number }> = {}
 
@@ -71,13 +85,13 @@ export default async function AbogadosPage({ searchParams }: Props) {
     }
   }
 
-  // Filtro por nombre en memoria (búsqueda de texto)
+  // Filtro texto en memoria
   let resultado = abogados ?? []
   if (sp.q) {
     const q = sp.q.toLowerCase()
     resultado = resultado.filter((a) => {
-      const perfil = Array.isArray(a.profiles) ? a.profiles[0] : a.profiles
-      const nombre = `${perfil?.nombre} ${perfil?.apellido}`.toLowerCase()
+      const p = Array.isArray(a.profiles) ? a.profiles[0] : a.profiles
+      const nombre = `${p?.nombre} ${p?.apellido}`.toLowerCase()
       const bio = (a.bio ?? '').toLowerCase()
       const specs = (a.especialidades ?? []).join(' ').toLowerCase()
       return nombre.includes(q) || bio.includes(q) || specs.includes(q)
@@ -88,74 +102,178 @@ export default async function AbogadosPage({ searchParams }: Props) {
     new Set((abogados ?? []).flatMap((a) => a.especialidades ?? []))
   ).sort()
 
+  const hayFiltros = !!(sp.q || sp.especialidad || sp.tarifa_max || sp.experiencia_min)
+
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Encuentra tu abogado</h1>
-        <p className="text-gray-600 mt-2">
-          {resultado.length} abogado{resultado.length !== 1 ? 's' : ''} disponible{resultado.length !== 1 ? 's' : ''}
-        </p>
+    <div style={{ minHeight: '100vh', background: 'var(--dls-cream)' }}>
+
+      {/* ── Navbar ─────────────────────────────────────────────── */}
+      <nav style={{ background: 'var(--dls-navy)', borderBottom: '1px solid rgba(201,163,90,0.2)', position: 'sticky', top: 0, zIndex: 50 }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+            <Link
+              href="/"
+              style={{
+                fontFamily: 'var(--font-body)',
+                fontSize: 11,
+                color: 'rgba(250,244,237,0.45)',
+                textDecoration: 'none',
+                letterSpacing: '0.06em',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              ← Inicio
+            </Link>
+            <div style={{ width: 1, height: 16, background: 'rgba(201,163,90,0.2)' }} />
+            <NavLogo />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
+            {user && perfil ? (
+              <>
+                <Link href={dashboardHref} className="nav-link">Mis casos</Link>
+                <span style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'rgba(250,244,237,0.4)', letterSpacing: '0.04em' }}>
+                  {perfil.nombre}
+                </span>
+                <LogoutButton />
+              </>
+            ) : (
+              <>
+                <Link href="/login" className="nav-link">Iniciar sesión</Link>
+                <Link href="/registro" className="btn-primary" style={{ padding: '9px 18px', fontSize: 10 }}>
+                  <span>Registrarse</span>
+                  <IconArrow />
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+      </nav>
+
+      {/* ── Hero section ───────────────────────────────────────── */}
+      <section
+        style={{
+          background: 'var(--dls-navy)',
+          padding: '56px 24px 48px',
+          borderBottom: '1px solid rgba(201,163,90,0.15)',
+        }}
+      >
+        <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+          <div className="eyebrow" style={{ marginBottom: 12 }}>
+            Directorio verificado
+          </div>
+          <h1
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontWeight: 500,
+              fontSize: 'clamp(36px, 5vw, 56px)',
+              color: 'var(--dls-cream)',
+              lineHeight: 1.08,
+              marginBottom: 12,
+            }}
+          >
+            Encuentra tu{' '}
+            <em style={{ color: 'var(--dls-champagne)', fontStyle: 'italic' }}>abogado</em>
+          </h1>
+          <p
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: 15,
+              color: 'rgba(250,244,237,0.55)',
+              marginBottom: 0,
+            }}
+          >
+            {resultado.length} abogado{resultado.length !== 1 ? 's' : ''} verificado{resultado.length !== 1 ? 's' : ''} disponible{resultado.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+      </section>
+
+      {/* ── Filtros ────────────────────────────────────────────── */}
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px 0' }}>
+        <FiltrosAbogados especialidades={especialidadesUnicas} />
       </div>
 
-      <FiltrosAbogados especialidades={especialidadesUnicas} />
-
-      {resultado.length === 0 ? (
-        <div className="text-center py-16 text-gray-500">
-          <p className="text-lg">No se encontraron abogados con esos filtros</p>
-          <Link href="/abogados" className="text-blue-700 text-sm mt-2 inline-block hover:underline">
-            Limpiar filtros
-          </Link>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
-          {resultado.map((abogado) => {
-            const perfil = Array.isArray(abogado.profiles) ? abogado.profiles[0] : abogado.profiles
-            const stats = reviewsPorAbogado[abogado.id]
-            return (
+      {/* ── Grid de cards ──────────────────────────────────────── */}
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px 80px' }}>
+        {resultado.length === 0 ? (
+          <div
+            style={{
+              textAlign: 'center',
+              padding: '80px 24px',
+              background: 'var(--dls-white)',
+              border: '1px solid var(--dls-hairline)',
+            }}
+          >
+            <div
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontStyle: 'italic',
+                fontSize: 28,
+                color: 'var(--dls-navy)',
+                opacity: 0.35,
+                marginBottom: 16,
+              }}
+            >
+              Sin resultados
+            </div>
+            <p
+              style={{
+                fontFamily: 'var(--font-body)',
+                fontSize: 14,
+                color: 'var(--dls-taupe)',
+                marginBottom: 24,
+              }}
+            >
+              No se encontraron abogados con esos filtros
+            </p>
+            {hayFiltros && (
               <Link
-                key={abogado.id}
-                href={`/abogados/${abogado.id}`}
-                className="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-md hover:border-blue-300 transition-all"
+                href="/abogados"
+                style={{
+                  fontFamily: 'var(--font-body)',
+                  fontSize: 12,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  color: 'var(--dls-champagne)',
+                  textDecoration: 'none',
+                  borderBottom: '1px solid var(--dls-champagne)',
+                  paddingBottom: 2,
+                }}
               >
-                <div className="flex items-start gap-3">
-                  <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold text-lg shrink-0">
-                    {perfil?.nombre?.[0]}{perfil?.apellido?.[0]}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h2 className="font-semibold text-gray-900">
-                      {perfil?.nombre} {perfil?.apellido}
-                    </h2>
-                    {stats && (
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <StarRating value={Math.round(stats.promedio)} readonly size="sm" />
-                        <span className="text-xs text-gray-500">({stats.total})</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {abogado.bio && (
-                  <p className="text-sm text-gray-600 mt-3 line-clamp-2">{abogado.bio}</p>
-                )}
-                <div className="flex flex-wrap gap-1 mt-3">
-                  {(abogado.especialidades ?? []).slice(0, 3).map((e: string) => (
-                    <span key={e} className="bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">
-                      {e}
-                    </span>
-                  ))}
-                </div>
-                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                  <span className="text-sm text-gray-600">
-                    {abogado.years_experiencia} años exp.
-                  </span>
-                  <span className="font-semibold text-blue-700">
-                    ${abogado.tarifa_hora?.toLocaleString('es-CL')}/hr
-                  </span>
-                </div>
+                Limpiar filtros
               </Link>
-            )
-          })}
-        </div>
-      )}
+            )}
+          </div>
+        ) : (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+              gap: 20,
+            }}
+          >
+            {resultado.map((abogado) => {
+              const p = Array.isArray(abogado.profiles) ? abogado.profiles[0] : abogado.profiles
+              return (
+                <AbogadoCard
+                  key={abogado.id}
+                  id={abogado.id}
+                  nombre={p?.nombre ?? ''}
+                  apellido={p?.apellido ?? ''}
+                  avatarUrl={p?.avatar_url}
+                  especialidades={abogado.especialidades ?? []}
+                  bio={abogado.bio}
+                  tarifaHora={abogado.tarifa_hora}
+                  yearsExperiencia={abogado.years_experiencia}
+                  rating={reviewsPorAbogado[abogado.id]}
+                />
+              )
+            })}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
