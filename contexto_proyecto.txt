@@ -767,6 +767,8 @@ export default function RegistroPage() {
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { NavLogo } from '@/components/shared/NavLogo'
+import { LogoutButton } from '@/components/shared/LogoutButton'
 import { StarRating } from '@/components/ui/star-rating'
 import type { Metadata } from 'next'
 
@@ -782,7 +784,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     .single()
 
   if (!data) return { title: 'Abogado | Marketplace Legal' }
-
   const perfil = Array.isArray(data.profiles) ? data.profiles[0] : data.profiles
   return {
     title: `${perfil?.nombre} ${perfil?.apellido} | Marketplace Legal`,
@@ -790,9 +791,27 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 }
 
+const IconArrow = () => (
+  <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="2" y1="7" x2="12" y2="7" /><polyline points="8,3 12,7 8,11" />
+  </svg>
+)
+
 export default async function PerfilAbogadoPage({ params }: Props) {
   const { id } = await params
   const supabase = await createClient()
+
+  // Usuario para nav
+  const { data: { user } } = await supabase.auth.getUser()
+  let perfil: { nombre: string | null; role: string | null } | null = null
+  if (user) {
+    const { data } = await supabase.from('profiles').select('nombre, role').eq('id', user.id).single()
+    perfil = data
+  }
+  const dashboardHref =
+    perfil?.role === 'abogado' ? '/dashboard/abogado' :
+    perfil?.role === 'admin'   ? '/dashboard/admin' :
+                                 '/dashboard/cliente'
 
   const { data: abogado } = await supabase
     .from('lawyer_profiles')
@@ -806,14 +825,11 @@ export default async function PerfilAbogadoPage({ params }: Props) {
 
   if (!abogado) notFound()
 
-  const perfil = Array.isArray(abogado.profiles) ? abogado.profiles[0] : abogado.profiles
+  const p = Array.isArray(abogado.profiles) ? abogado.profiles[0] : abogado.profiles
 
   const { data: reviews } = await supabase
     .from('reviews')
-    .select(`
-      id, puntuacion, comentario, created_at,
-      profiles!reviews_cliente_id_fkey(nombre, apellido)
-    `)
+    .select(`id, puntuacion, comentario, created_at, profiles!reviews_cliente_id_fkey(nombre, apellido)`)
     .eq('abogado_id', id)
     .order('created_at', { ascending: false })
 
@@ -821,96 +837,209 @@ export default async function PerfilAbogadoPage({ params }: Props) {
     ? Math.round((reviews.reduce((acc, r) => acc + r.puntuacion, 0) / reviews.length) * 10) / 10
     : null
 
+  const iniciales = `${p?.nombre?.[0] ?? ''}${p?.apellido?.[0] ?? ''}`
+
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
-      {/* Header */}
-      <div className="bg-white border border-gray-200 rounded-xl p-6">
-        <div className="flex items-start gap-4">
-          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold text-2xl shrink-0">
-            {perfil?.nombre?.[0]}{perfil?.apellido?.[0]}
+    <div style={{ minHeight: '100vh', background: 'var(--dls-cream)' }}>
+
+      {/* ── Navbar ─────────────────────────────────────────────── */}
+      <nav style={{ background: 'var(--dls-navy)', borderBottom: '1px solid rgba(201,163,90,0.2)', position: 'sticky', top: 0, zIndex: 50 }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+            <Link href="/abogados" style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'rgba(250,244,237,0.45)', textDecoration: 'none', letterSpacing: '0.06em' }}>
+              ← Abogados
+            </Link>
+            <div style={{ width: 1, height: 16, background: 'rgba(201,163,90,0.2)' }} />
+            <NavLogo />
           </div>
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold text-gray-900">
-              {perfil?.nombre} {perfil?.apellido}
-            </h1>
-            {promedio && (
-              <div className="flex items-center gap-2 mt-1">
-                <StarRating value={Math.round(promedio)} readonly size="sm" />
-                <span className="text-sm text-gray-600">
-                  {promedio} ({reviews?.length} calificación{reviews?.length !== 1 ? 'es' : ''})
-                </span>
-              </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
+            {user && perfil ? (
+              <>
+                <Link href={dashboardHref} className="nav-link">Mis casos</Link>
+                <LogoutButton />
+              </>
+            ) : (
+              <>
+                <Link href="/login" className="nav-link">Iniciar sesión</Link>
+                <Link href="/registro" className="btn-primary" style={{ padding: '9px 18px', fontSize: 10 }}>
+                  <span>Registrarse</span><IconArrow />
+                </Link>
+              </>
             )}
-            <p className="text-blue-700 font-semibold mt-2">
-              ${abogado.tarifa_hora?.toLocaleString('es-CL')}/hora
-            </p>
           </div>
         </div>
+      </nav>
 
-        {abogado.bio && (
-          <p className="text-gray-700 mt-4">{abogado.bio}</p>
-        )}
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: '48px 24px 80px' }}>
 
-        <div className="flex flex-wrap gap-2 mt-4">
-          {(abogado.especialidades ?? []).map((e: string) => (
-            <span key={e} className="bg-blue-50 text-blue-700 text-sm px-3 py-1 rounded-full">
-              {e}
-            </span>
-          ))}
-        </div>
+        {/* ── Header del abogado ─────────────────────────────────── */}
+        <div
+          style={{
+            background: 'var(--dls-navy)',
+            padding: '40px',
+            marginBottom: 24,
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Decoración */}
+          <div aria-hidden style={{ position: 'absolute', top: -60, right: -60, width: 240, height: 240, borderRadius: '50%', border: '1px solid rgba(201,163,90,0.1)', pointerEvents: 'none' }} />
+          <div aria-hidden style={{ position: 'absolute', top: -30, right: -30, width: 160, height: 160, borderRadius: '50%', border: '1px solid rgba(201,163,90,0.08)', pointerEvents: 'none' }} />
 
-        <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-100">
-          <div>
-            <p className="text-sm text-gray-500">Años de experiencia</p>
-            <p className="font-semibold">{abogado.years_experiencia} años</p>
-          </div>
-          {perfil?.telefono && (
-            <div>
-              <p className="text-sm text-gray-500">Contacto</p>
-              <p className="font-semibold">{perfil.telefono}</p>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24, position: 'relative' }}>
+            {/* Avatar */}
+            <div
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: '50%',
+                background: 'rgba(201,163,90,0.15)',
+                border: '2px solid rgba(201,163,90,0.4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                overflow: 'hidden',
+              }}
+            >
+              {p?.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={p.avatar_url} alt={iniciales} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: 26, color: 'var(--dls-champagne)', fontWeight: 500, lineHeight: 1 }}>
+                  {iniciales}
+                </span>
+              )}
             </div>
-          )}
-        </div>
 
-        <div className="mt-4">
-          <Link
-            href="/dashboard/cliente/casos/nuevo"
-            className="inline-block bg-blue-700 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-800 transition-colors"
-          >
-            Crear caso con este abogado
-          </Link>
-        </div>
-      </div>
-
-      {/* Reviews */}
-      {reviews && reviews.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-lg font-semibold text-gray-900">
-            Calificaciones ({reviews.length})
-          </h2>
-          {reviews.map((r) => {
-            const cliente = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles
-            return (
-              <div key={r.id} className="bg-white border border-gray-200 rounded-lg p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-medium text-sm text-gray-900">
-                      {cliente?.nombre} {cliente?.apellido}
-                    </p>
-                    <StarRating value={r.puntuacion} readonly size="sm" />
-                  </div>
-                  <span className="text-xs text-gray-400">
-                    {new Date(r.created_at).toLocaleDateString('es-CL')}
+            <div style={{ flex: 1 }}>
+              <div className="eyebrow" style={{ marginBottom: 8 }}>Abogado verificado</div>
+              <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 32, color: 'var(--dls-cream)', lineHeight: 1.1, marginBottom: 10 }}>
+                {p?.nombre} {p?.apellido}
+              </h1>
+              {promedio ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                  <StarRating value={Math.round(promedio)} readonly size="sm" />
+                  <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'rgba(250,244,237,0.55)' }}>
+                    {promedio} ({reviews?.length} calificación{reviews?.length !== 1 ? 'es' : ''})
                   </span>
                 </div>
-                {r.comentario && (
-                  <p className="text-sm text-gray-600 mt-2">{r.comentario}</p>
+              ) : (
+                <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'rgba(250,244,237,0.4)', marginBottom: 16 }}>Sin valoraciones aún</p>
+              )}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {(abogado.especialidades ?? []).map((e: string) => (
+                  <span key={e} style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-champagne)', background: 'rgba(201,163,90,0.12)', padding: '4px 10px' }}>
+                    {e}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Tarifa */}
+            {abogado.tarifa_hora != null && (
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 28, color: 'var(--dls-champagne)', lineHeight: 1 }}>
+                  ${abogado.tarifa_hora.toLocaleString('es-CL')}
+                </div>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'rgba(250,244,237,0.4)', letterSpacing: '0.06em', marginTop: 4 }}>por hora</div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Grid info + CTA ───────────────────────────────────── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20, alignItems: 'start' }}>
+
+          {/* Columna principal */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+            {/* Bio */}
+            {abogado.bio && (
+              <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: '28px' }}>
+                <div className="eyebrow" style={{ marginBottom: 16, color: 'var(--dls-navy)' }}>Sobre el abogado</div>
+                <p style={{ fontFamily: 'var(--font-body)', fontSize: 15, lineHeight: 1.75, color: 'var(--dls-navy-mid)' }}>
+                  {abogado.bio}
+                </p>
+              </div>
+            )}
+
+            {/* Datos */}
+            <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: '28px' }}>
+              <div className="eyebrow" style={{ marginBottom: 20, color: 'var(--dls-navy)' }}>Datos profesionales</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                {abogado.years_experiencia != null && (
+                  <div>
+                    <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 6 }}>Experiencia</p>
+                    <p style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22, color: 'var(--dls-navy)' }}>{abogado.years_experiencia} años</p>
+                  </div>
+                )}
+                {p?.telefono && (
+                  <div>
+                    <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 6 }}>Contacto</p>
+                    <p style={{ fontFamily: 'var(--font-body)', fontSize: 15, color: 'var(--dls-navy)' }}>{p.telefono}</p>
+                  </div>
                 )}
               </div>
-            )
-          })}
+            </div>
+
+            {/* Reviews */}
+            {reviews && reviews.length > 0 && (
+              <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: '28px' }}>
+                <div className="eyebrow" style={{ marginBottom: 20, color: 'var(--dls-navy)' }}>
+                  Valoraciones ({reviews.length})
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {reviews.map((r) => {
+                    const cliente = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles
+                    return (
+                      <div key={r.id} style={{ borderBottom: '1px solid var(--dls-hairline)', paddingBottom: 16 }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+                          <div>
+                            <p style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 13, color: 'var(--dls-navy)', marginBottom: 4 }}>
+                              {cliente?.nombre} {cliente?.apellido}
+                            </p>
+                            <StarRating value={r.puntuacion} readonly size="sm" />
+                          </div>
+                          <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-taupe)', letterSpacing: '0.04em' }}>
+                            {new Date(r.created_at).toLocaleDateString('es-CL')}
+                          </span>
+                        </div>
+                        {r.comentario && (
+                          <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, lineHeight: 1.65, color: 'var(--dls-taupe)' }}>
+                            {r.comentario}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Columna lateral - CTA */}
+          <div style={{ position: 'sticky', top: 84 }}>
+            <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: '28px' }}>
+              <div className="eyebrow" style={{ marginBottom: 12, color: 'var(--dls-navy)' }}>¿Necesitas ayuda?</div>
+              <p style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 20, color: 'var(--dls-navy)', lineHeight: 1.35, marginBottom: 20 }}>
+                Abre un caso y {p?.nombre} lo revisará pronto.
+              </p>
+              <Link
+                href="/dashboard/cliente/casos/nuevo"
+                className="btn-primary"
+                style={{ width: '100%', justifyContent: 'center', padding: '14px 20px', display: 'flex', boxSizing: 'border-box' }}
+              >
+                <span>Crear un caso</span>
+                <IconArrow />
+              </Link>
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-taupe)', textAlign: 'center', marginTop: 12, letterSpacing: '0.04em' }}>
+                Sin costos ocultos
+              </p>
+            </div>
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -918,8 +1047,10 @@ export default async function PerfilAbogadoPage({ params }: Props) {
 // app/abogados/page.tsx
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { StarRating } from '@/components/ui/star-rating'
 import { FiltrosAbogados } from '@/components/abogados/FiltrosAbogados'
+import { AbogadoCard } from '@/components/abogados/AbogadoCard'
+import { NavLogo } from '@/components/shared/NavLogo'
+import { LogoutButton } from '@/components/shared/LogoutButton'
 
 interface SearchParams {
   especialidad?: string
@@ -937,9 +1068,27 @@ export const metadata = {
   description: 'Encuentra el abogado ideal para tu caso. Filtra por especialidad, tarifa y experiencia.',
 }
 
+const IconArrow = () => (
+  <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="2" y1="7" x2="12" y2="7" /><polyline points="8,3 12,7 8,11" />
+  </svg>
+)
+
 export default async function AbogadosPage({ searchParams }: Props) {
   const sp = await searchParams
   const supabase = await createClient()
+
+  // Usuario logueado para nav
+  const { data: { user } } = await supabase.auth.getUser()
+  let perfil: { nombre: string | null; role: string | null } | null = null
+  if (user) {
+    const { data } = await supabase.from('profiles').select('nombre, role').eq('id', user.id).single()
+    perfil = data
+  }
+  const dashboardHref =
+    perfil?.role === 'abogado' ? '/dashboard/abogado' :
+    perfil?.role === 'admin'   ? '/dashboard/admin' :
+                                 '/dashboard/cliente'
 
   let query = supabase
     .from('lawyer_profiles')
@@ -954,19 +1103,13 @@ export default async function AbogadosPage({ searchParams }: Props) {
     `)
     .eq('verified', true)
 
-  if (sp.especialidad) {
-    query = query.contains('especialidades', [sp.especialidad])
-  }
-  if (sp.tarifa_max) {
-    query = query.lte('tarifa_hora', parseInt(sp.tarifa_max))
-  }
-  if (sp.experiencia_min) {
-    query = query.gte('years_experiencia', parseInt(sp.experiencia_min))
-  }
+  if (sp.especialidad) query = query.contains('especialidades', [sp.especialidad])
+  if (sp.tarifa_max)   query = query.lte('tarifa_hora', parseInt(sp.tarifa_max))
+  if (sp.experiencia_min) query = query.gte('years_experiencia', parseInt(sp.experiencia_min))
 
   const { data: abogados } = await query.order('years_experiencia', { ascending: false })
 
-  // Reviews promedio por abogado
+  // Reviews promedio
   const abogadoIds = (abogados ?? []).map((a) => a.id)
   const reviewsPorAbogado: Record<string, { promedio: number; total: number }> = {}
 
@@ -988,13 +1131,13 @@ export default async function AbogadosPage({ searchParams }: Props) {
     }
   }
 
-  // Filtro por nombre en memoria (búsqueda de texto)
+  // Filtro texto en memoria
   let resultado = abogados ?? []
   if (sp.q) {
     const q = sp.q.toLowerCase()
     resultado = resultado.filter((a) => {
-      const perfil = Array.isArray(a.profiles) ? a.profiles[0] : a.profiles
-      const nombre = `${perfil?.nombre} ${perfil?.apellido}`.toLowerCase()
+      const p = Array.isArray(a.profiles) ? a.profiles[0] : a.profiles
+      const nombre = `${p?.nombre} ${p?.apellido}`.toLowerCase()
       const bio = (a.bio ?? '').toLowerCase()
       const specs = (a.especialidades ?? []).join(' ').toLowerCase()
       return nombre.includes(q) || bio.includes(q) || specs.includes(q)
@@ -1005,76 +1148,255 @@ export default async function AbogadosPage({ searchParams }: Props) {
     new Set((abogados ?? []).flatMap((a) => a.especialidades ?? []))
   ).sort()
 
+  const hayFiltros = !!(sp.q || sp.especialidad || sp.tarifa_max || sp.experiencia_min)
+
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Encuentra tu abogado</h1>
-        <p className="text-gray-600 mt-2">
-          {resultado.length} abogado{resultado.length !== 1 ? 's' : ''} disponible{resultado.length !== 1 ? 's' : ''}
-        </p>
+    <div style={{ minHeight: '100vh', background: 'var(--dls-cream)' }}>
+
+      {/* ── Navbar ─────────────────────────────────────────────── */}
+      <nav style={{ background: 'var(--dls-navy)', borderBottom: '1px solid rgba(201,163,90,0.2)', position: 'sticky', top: 0, zIndex: 50 }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+            <Link
+              href="/"
+              style={{
+                fontFamily: 'var(--font-body)',
+                fontSize: 11,
+                color: 'rgba(250,244,237,0.45)',
+                textDecoration: 'none',
+                letterSpacing: '0.06em',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              ← Inicio
+            </Link>
+            <div style={{ width: 1, height: 16, background: 'rgba(201,163,90,0.2)' }} />
+            <NavLogo />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
+            {user && perfil ? (
+              <>
+                <Link href={dashboardHref} className="nav-link">Mis casos</Link>
+                <span style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'rgba(250,244,237,0.4)', letterSpacing: '0.04em' }}>
+                  {perfil.nombre}
+                </span>
+                <LogoutButton />
+              </>
+            ) : (
+              <>
+                <Link href="/login" className="nav-link">Iniciar sesión</Link>
+                <Link href="/registro" className="btn-primary" style={{ padding: '9px 18px', fontSize: 10 }}>
+                  <span>Registrarse</span>
+                  <IconArrow />
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+      </nav>
+
+      {/* ── Hero section ───────────────────────────────────────── */}
+      <section
+        style={{
+          background: 'var(--dls-navy)',
+          padding: '56px 24px 48px',
+          borderBottom: '1px solid rgba(201,163,90,0.15)',
+        }}
+      >
+        <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+          <div className="eyebrow" style={{ marginBottom: 12 }}>
+            Directorio verificado
+          </div>
+          <h1
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontWeight: 500,
+              fontSize: 'clamp(36px, 5vw, 56px)',
+              color: 'var(--dls-cream)',
+              lineHeight: 1.08,
+              marginBottom: 12,
+            }}
+          >
+            Encuentra tu{' '}
+            <em style={{ color: 'var(--dls-champagne)', fontStyle: 'italic' }}>abogado</em>
+          </h1>
+          <p
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: 15,
+              color: 'rgba(250,244,237,0.55)',
+              marginBottom: 0,
+            }}
+          >
+            {resultado.length} abogado{resultado.length !== 1 ? 's' : ''} verificado{resultado.length !== 1 ? 's' : ''} disponible{resultado.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+      </section>
+
+      {/* ── Filtros ────────────────────────────────────────────── */}
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px 0' }}>
+        <FiltrosAbogados especialidades={especialidadesUnicas} />
       </div>
 
-      <FiltrosAbogados especialidades={especialidadesUnicas} />
-
-      {resultado.length === 0 ? (
-        <div className="text-center py-16 text-gray-500">
-          <p className="text-lg">No se encontraron abogados con esos filtros</p>
-          <Link href="/abogados" className="text-blue-700 text-sm mt-2 inline-block hover:underline">
-            Limpiar filtros
-          </Link>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
-          {resultado.map((abogado) => {
-            const perfil = Array.isArray(abogado.profiles) ? abogado.profiles[0] : abogado.profiles
-            const stats = reviewsPorAbogado[abogado.id]
-            return (
+      {/* ── Grid de cards ──────────────────────────────────────── */}
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px 80px' }}>
+        {resultado.length === 0 ? (
+          <div
+            style={{
+              textAlign: 'center',
+              padding: '80px 24px',
+              background: 'var(--dls-white)',
+              border: '1px solid var(--dls-hairline)',
+            }}
+          >
+            <div
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontStyle: 'italic',
+                fontSize: 28,
+                color: 'var(--dls-navy)',
+                opacity: 0.35,
+                marginBottom: 16,
+              }}
+            >
+              Sin resultados
+            </div>
+            <p
+              style={{
+                fontFamily: 'var(--font-body)',
+                fontSize: 14,
+                color: 'var(--dls-taupe)',
+                marginBottom: 24,
+              }}
+            >
+              No se encontraron abogados con esos filtros
+            </p>
+            {hayFiltros && (
               <Link
-                key={abogado.id}
-                href={`/abogados/${abogado.id}`}
-                className="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-md hover:border-blue-300 transition-all"
+                href="/abogados"
+                style={{
+                  fontFamily: 'var(--font-body)',
+                  fontSize: 12,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  color: 'var(--dls-champagne)',
+                  textDecoration: 'none',
+                  borderBottom: '1px solid var(--dls-champagne)',
+                  paddingBottom: 2,
+                }}
               >
-                <div className="flex items-start gap-3">
-                  <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold text-lg shrink-0">
-                    {perfil?.nombre?.[0]}{perfil?.apellido?.[0]}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h2 className="font-semibold text-gray-900">
-                      {perfil?.nombre} {perfil?.apellido}
-                    </h2>
-                    {stats && (
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <StarRating value={Math.round(stats.promedio)} readonly size="sm" />
-                        <span className="text-xs text-gray-500">({stats.total})</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {abogado.bio && (
-                  <p className="text-sm text-gray-600 mt-3 line-clamp-2">{abogado.bio}</p>
-                )}
-                <div className="flex flex-wrap gap-1 mt-3">
-                  {(abogado.especialidades ?? []).slice(0, 3).map((e: string) => (
-                    <span key={e} className="bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">
-                      {e}
-                    </span>
-                  ))}
-                </div>
-                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                  <span className="text-sm text-gray-600">
-                    {abogado.years_experiencia} años exp.
-                  </span>
-                  <span className="font-semibold text-blue-700">
-                    ${abogado.tarifa_hora?.toLocaleString('es-CL')}/hr
-                  </span>
-                </div>
+                Limpiar filtros
               </Link>
-            )
-          })}
-        </div>
-      )}
+            )}
+          </div>
+        ) : (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+              gap: 20,
+            }}
+          >
+            {resultado.map((abogado) => {
+              const p = Array.isArray(abogado.profiles) ? abogado.profiles[0] : abogado.profiles
+              return (
+                <AbogadoCard
+                  key={abogado.id}
+                  id={abogado.id}
+                  nombre={p?.nombre ?? ''}
+                  apellido={p?.apellido ?? ''}
+                  avatarUrl={p?.avatar_url}
+                  especialidades={abogado.especialidades ?? []}
+                  bio={abogado.bio}
+                  tarifaHora={abogado.tarifa_hora}
+                  yearsExperiencia={abogado.years_experiencia}
+                  rating={reviewsPorAbogado[abogado.id]}
+                />
+              )
+            })}
+          </div>
+        )}
+      </div>
     </div>
   )
+}
+===== ./app/api/admin/aceptar-postulacion/route.ts =====
+// app/api/admin/aceptar-postulacion/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { enviarEmailAsignacion } from '@/lib/resend'
+
+export async function POST(req: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+    if (profile?.role !== 'admin') return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+
+    const { postulacion_id: postulacionId } = await req.json()
+    if (!postulacionId) return NextResponse.json({ error: 'Falta postulacion_id' }, { status: 400 })
+
+    const admin = createAdminClient()
+
+    // Obtener la postulación
+    const { data: post } = await admin
+      .from('postulaciones')
+      .select('id, caso_id, abogado_id, estado')
+      .eq('id', postulacionId)
+      .single()
+
+    if (!post) return NextResponse.json({ error: 'Postulación no encontrada' }, { status: 404 })
+    if (post.estado !== 'pendiente') return NextResponse.json({ error: 'Esta postulación ya fue procesada' }, { status: 409 })
+
+    // Aceptar esta postulación y rechazar el resto del caso
+    await admin
+      .from('postulaciones')
+      .update({ estado: 'aceptada' })
+      .eq('id', postulacionId)
+
+    await admin
+      .from('postulaciones')
+      .update({ estado: 'rechazada' })
+      .eq('caso_id', post.caso_id)
+      .neq('id', postulacionId)
+
+    // Asignar el abogado al caso
+    const { data: caso, error: casoError } = await admin
+      .from('casos')
+      .update({ abogado_id: post.abogado_id, estado: 'asignado', updated_at: new Date().toISOString() })
+      .eq('id', post.caso_id)
+      .select('titulo')
+      .single()
+
+    if (casoError) throw casoError
+
+    // Email de notificación
+    const { data: perfil } = await admin
+      .from('profiles')
+      .select('nombre, apellido, email')
+      .eq('id', post.abogado_id)
+      .single()
+
+    if (perfil?.email && caso) {
+      await enviarEmailAsignacion({
+        emailAbogado: perfil.email,
+        nombreAbogado: `${perfil.nombre} ${perfil.apellido}`,
+        tituloCaso: caso.titulo,
+        casoId: post.caso_id,
+      }).catch((e) => console.error('Email fallido:', e))
+    }
+
+    return NextResponse.json({ ok: true })
+  } catch (e) {
+    console.error('Error en /api/admin/aceptar-postulacion:', e)
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 })
+  }
 }
 ===== ./app/api/admin/asignar-abogado/route.ts =====
 // app/api/admin/asignar-abogado/route.ts
@@ -1673,6 +1995,181 @@ Reglas:
     )
   }
 }
+===== ./app/api/casos/anonimo/route.ts =====
+// app/api/casos/anonimo/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { enviarCodigoSeguimiento } from '@/lib/resend'
+import { randomBytes } from 'crypto'
+
+const AREAS_LEGALES = [
+  'Derecho de Familia', 'Derecho Laboral', 'Derecho Civil', 'Derecho Penal',
+  'Derecho Comercial', 'Derecho Inmobiliario', 'Derecho Tributario', 'Otro',
+]
+
+// ─── Mismo bucket y mapeo de tipos que usa actions.ts ────────────────────────
+const BUCKET = 'documentos'
+
+const TIPO_LABEL: Record<string, string> = {
+  'application/pdf': 'PDF',
+  'application/msword': 'Word',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Word',
+  'application/vnd.ms-excel': 'Excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'Excel',
+  'image/jpeg': 'Imagen',
+  'image/jpg':  'Imagen',
+  'image/png':  'Imagen',
+  'image/webp': 'Imagen',
+}
+
+function tipoLabel(mimeType: string): string {
+  return TIPO_LABEL[mimeType] ?? 'Archivo'
+}
+
+// ─── Clasificar con Gemini ────────────────────────────────────────────────────
+async function clasificarCaso(descripcion: string): Promise<{ area: string; titulo: string }> {
+  const key = process.env.GEMINI_API_KEY
+  if (!key) return { area: 'Otro', titulo: descripcion.trim().slice(0, 60) || 'Consulta legal' }
+  try {
+    const prompt = `Eres un asistente legal chileno. Analiza esta descripción y responde SOLO con JSON válido sin markdown.
+Descripción: "${descripcion.slice(0, 800)}"
+Formato: {"area":"<una de: ${AREAS_LEGALES.join(' | ')}>","titulo":"<título conciso, máx 60 caracteres>"}`
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.1, maxOutputTokens: 150 } }) }
+    )
+    if (!res.ok) throw new Error('Gemini error')
+    const data = await res.json()
+    const text = (data.candidates?.[0]?.content?.parts?.[0]?.text ?? '').replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(text)
+    return {
+      area:   AREAS_LEGALES.includes(parsed.area) ? parsed.area : 'Otro',
+      titulo: (parsed.titulo as string)?.slice(0, 80) || 'Consulta legal',
+    }
+  } catch {
+    return { area: 'Otro', titulo: descripcion.trim().split(/[.!?]/)[0]?.slice(0, 60) || 'Consulta legal' }
+  }
+}
+
+// ─── Subir archivo al bucket correcto ────────────────────────────────────────
+async function subirArchivo(
+  admin: ReturnType<typeof createAdminClient>,
+  file: File,
+  casoId: string
+): Promise<{ url: string; nombre: string; tipo: string } | null> {
+  try {
+    const nombreLimpio = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const storagePath  = `casos/${casoId}/${Date.now()}_${nombreLimpio}`
+
+    const buffer = new Uint8Array(await file.arrayBuffer())
+
+    const { error: uploadError } = await admin.storage
+      .from(BUCKET)
+      .upload(storagePath, buffer, { contentType: file.type, upsert: false })
+
+    if (uploadError) {
+      console.error(`[anonimo] ✗ Upload "${file.name}":`, uploadError.message)
+      return null
+    }
+
+    // Mismo método que actions.ts — bucket documentos es público
+    const { data: { publicUrl } } = admin.storage.from(BUCKET).getPublicUrl(storagePath)
+
+    console.log(`[anonimo] ✓ Subido: ${file.name}`)
+    return { url: publicUrl, nombre: file.name, tipo: tipoLabel(file.type) }
+  } catch (e) {
+    console.error(`[anonimo] ✗ Excepción "${file.name}":`, e)
+    return null
+  }
+}
+
+// ─── Handler principal ────────────────────────────────────────────────────────
+export async function POST(req: NextRequest) {
+  try {
+    const formData    = await req.formData()
+    const nombre      = (formData.get('nombre')      as string)?.trim()
+    const email       = (formData.get('email')       as string)?.trim()
+    const telefono    = (formData.get('telefono')    as string)?.trim() || null
+    const descripcion = (formData.get('descripcion') as string)?.trim()
+    const archivos    = formData.getAll('archivos') as File[]
+
+    if (!nombre || !email || !descripcion)
+      return NextResponse.json({ error: 'Nombre, email y descripción son obligatorios' }, { status: 400 })
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      return NextResponse.json({ error: 'Email inválido' }, { status: 400 })
+    if (descripcion.length < 30)
+      return NextResponse.json({ error: 'Descripción demasiado corta' }, { status: 400 })
+
+    const codigo = 'ML-' + randomBytes(3).toString('hex').toUpperCase()
+    const { area, titulo } = await clasificarCaso(descripcion)
+
+    const admin = createAdminClient()
+
+    // Crear caso anónimo
+    const { data: caso, error: casoError } = await admin
+      .from('casos')
+      .insert({
+        cliente_id:         null,
+        titulo,
+        descripcion,
+        area_legal:         area,
+        estado:             'pendiente',
+        nombre_contacto:    nombre,
+        email_contacto:     email,
+        telefono_contacto:  telefono,
+        codigo_seguimiento: codigo,
+      })
+      .select('id')
+      .single()
+
+    if (casoError || !caso) {
+      console.error('[anonimo] Error creando caso:', casoError)
+      return NextResponse.json({ error: 'No se pudo crear el caso' }, { status: 500 })
+    }
+
+    console.log(`[anonimo] Caso creado: ${caso.id} — "${titulo}"`)
+
+    // Subir documentos
+    const archivosValidos = archivos.filter(f => f instanceof File && f.size > 0 && f.name !== 'undefined')
+    console.log(`[anonimo] Archivos recibidos: ${archivosValidos.length}`)
+
+    const docsSubidos: { url: string; nombre: string; tipo: string }[] = []
+    for (const archivo of archivosValidos.slice(0, 5)) {
+      const doc = await subirArchivo(admin, archivo, caso.id)
+      if (doc) docsSubidos.push(doc)
+    }
+
+    // Insertar en caso_documentos
+    // Columna: uploaded_by (no subido_por) — debe ser nullable para casos anónimos
+    if (docsSubidos.length > 0) {
+      const { error: docError } = await admin.from('caso_documentos').insert(
+        docsSubidos.map(d => ({
+          caso_id:     caso.id,
+          nombre:      d.nombre,
+          tipo:        d.tipo,
+          url:         d.url,
+          uploaded_by: null,   // ← null para casos anónimos (requiere columna nullable)
+        }))
+      )
+      if (docError) {
+        console.error('[anonimo] Error en caso_documentos:', docError.message)
+      }
+    }
+
+    console.log(`[anonimo] Docs guardados: ${docsSubidos.length}/${archivosValidos.length}`)
+
+    await enviarCodigoSeguimiento({
+      email, nombre, tituloCaso: titulo, areaCaso: area,
+      codigo, docsCount: docsSubidos.length,
+    }).catch(e => console.error('[anonimo] Email fallido:', e))
+
+    return NextResponse.json({ ok: true, codigo, titulo, area, docsSubidos: docsSubidos.length })
+  } catch (e) {
+    console.error('[anonimo] Error general:', e)
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
+  }
+}
 ===== ./app/api/casos/cambiar-estado/route.ts =====
 // app/api/casos/cambiar-estado/route.ts
 import { NextRequest } from 'next/server'
@@ -1714,6 +2211,80 @@ export async function POST(req: NextRequest) {
   revalidatePath('/dashboard/abogado')
 
   return Response.json({ ok: true })
+}
+===== ./app/api/casos/vincular/route.ts =====
+// app/api/casos/vincular/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+export async function POST(req: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: 'Debes iniciar sesión para vincular un caso' }, { status: 401 })
+    }
+
+    // Verificar que es cliente
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, email')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.role !== 'cliente') {
+      return NextResponse.json({ error: 'Solo clientes pueden vincular casos' }, { status: 403 })
+    }
+
+    const { codigo } = await req.json()
+    if (!codigo?.trim()) {
+      return NextResponse.json({ error: 'Código de seguimiento requerido' }, { status: 400 })
+    }
+
+    const admin = createAdminClient()
+
+    // Buscar el caso por código
+    const { data: caso, error: buscarError } = await admin
+      .from('casos')
+      .select('id, titulo, area_legal, estado, cliente_id, email_contacto')
+      .eq('codigo_seguimiento', codigo.trim().toUpperCase())
+      .single()
+
+    if (buscarError || !caso) {
+      return NextResponse.json({ error: 'Código no encontrado. Verifica que esté escrito correctamente.' }, { status: 404 })
+    }
+
+    if (caso.cliente_id !== null) {
+      // Ya está vinculado — verificar si es del mismo usuario
+      if (caso.cliente_id === user.id) {
+        return NextResponse.json({ error: 'Este caso ya está vinculado a tu cuenta' }, { status: 409 })
+      }
+      return NextResponse.json({ error: 'Este código ya fue utilizado' }, { status: 409 })
+    }
+
+    // Vincular
+    const { error: updateError } = await admin
+      .from('casos')
+      .update({ cliente_id: user.id, updated_at: new Date().toISOString() })
+      .eq('id', caso.id)
+
+    if (updateError) throw updateError
+
+    return NextResponse.json({
+      ok: true,
+      caso: {
+        id: caso.id,
+        titulo: caso.titulo,
+        area_legal: caso.area_legal,
+        estado: caso.estado,
+      },
+    })
+  } catch (e) {
+    console.error('Error en /api/casos/vincular:', e)
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 })
+  }
 }
 ===== ./app/api/chat/route.ts =====
 import { createClient } from "@supabase/supabase-js";
@@ -2139,6 +2710,104 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true }) // no bloquear el flujo por un email fallido
   }
 }
+===== ./app/api/pool/postular/route.ts =====
+// app/api/pool/postular/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+const MAX_POSTULACIONES_DIA = 10  // 100 puntos / 10 por caso
+const MAX_POSTULACIONES_CASO = 3
+
+export async function POST(req: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+    }
+
+    // Verificar que es abogado verificado
+    const { data: lawyerProfile } = await supabase
+      .from('lawyer_profiles')
+      .select('id, verified')
+      .eq('id', user.id)
+      .single()
+
+    if (!lawyerProfile?.verified) {
+      return NextResponse.json({ error: 'Solo abogados verificados pueden postular' }, { status: 403 })
+    }
+
+    const { caso_id: casoId, mensaje } = await req.json()
+    if (!casoId) {
+      return NextResponse.json({ error: 'Falta caso_id' }, { status: 400 })
+    }
+
+    const admin = createAdminClient()
+
+    // 1. Verificar que el caso existe, está pendiente y en pool
+    const { data: caso } = await admin
+      .from('casos')
+      .select('id, estado, abogado_id, postulaciones_count')
+      .eq('id', casoId)
+      .single()
+
+    if (!caso) {
+      return NextResponse.json({ error: 'Caso no encontrado' }, { status: 404 })
+    }
+    if (caso.estado !== 'pendiente' || caso.abogado_id !== null) {
+      return NextResponse.json({ error: 'Este caso ya no está en el pool' }, { status: 409 })
+    }
+    if ((caso.postulaciones_count ?? 0) >= MAX_POSTULACIONES_CASO) {
+      return NextResponse.json({ error: 'Este caso ya tiene el máximo de postulaciones' }, { status: 409 })
+    }
+
+    // 2. Verificar puntos del día (cuántos casos aplicó hoy)
+    const hoy = new Date().toISOString().split('T')[0]
+    const { count: postulacionesHoy } = await admin
+      .from('postulaciones')
+      .select('id', { count: 'exact', head: true })
+      .eq('abogado_id', user.id)
+      .gte('created_at', `${hoy}T00:00:00.000Z`)
+      .lt('created_at', `${hoy}T23:59:59.999Z`)
+
+    if ((postulacionesHoy ?? 0) >= MAX_POSTULACIONES_DIA) {
+      return NextResponse.json({
+        error: 'Alcanzaste el límite de postulaciones del día (10 casos)',
+        puntosUsados: 100,
+        puntosRestantes: 0,
+      }, { status: 429 })
+    }
+
+    // 3. Insertar postulación (la constraint UNIQUE previene duplicados)
+    const { error: insertError } = await admin
+      .from('postulaciones')
+      .insert({
+        caso_id: casoId,
+        abogado_id: user.id,
+        mensaje: mensaje?.trim() || null,
+      })
+
+    if (insertError) {
+      if (insertError.code === '23505') {
+        return NextResponse.json({ error: 'Ya postulaste a este caso' }, { status: 409 })
+      }
+      throw insertError
+    }
+
+    const puntosRestantes = ((MAX_POSTULACIONES_DIA - (postulacionesHoy ?? 0) - 1) * 10)
+
+    return NextResponse.json({
+      ok: true,
+      puntosRestantes,
+      puntosUsados: ((postulacionesHoy ?? 0) + 1) * 10,
+    })
+  } catch (e) {
+    console.error('Error en /api/pool/postular:', e)
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 })
+  }
+}
 ===== ./app/auth/callback/route.ts =====
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
@@ -2228,6 +2897,83 @@ export default async function DetalleCasoAbogadoPage({ params }: PageProps) {
       resumenIA={resumenIA}
       userId={user.id}
       documentos={documentos ?? []}
+    />
+  )
+}
+===== ./app/dashboard/abogado/explorar/page.tsx =====
+// app/dashboard/abogado/explorar/page.tsx
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { PoolExplorar } from '@/components/pool/PoolExplorar'
+
+export default async function ExplorarPoolPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  if (profile?.role !== 'abogado') redirect('/dashboard')
+
+  const { data: lawyerProfile } = await supabase
+    .from('lawyer_profiles').select('verified').eq('id', user.id).single()
+
+  const admin = createAdminClient()
+
+  // Puntos del día
+  const hoy = new Date().toISOString().split('T')[0]
+  const { count: postulacionesHoy } = await admin
+    .from('postulaciones')
+    .select('id', { count: 'exact', head: true })
+    .eq('abogado_id', user.id)
+    .gte('created_at', `${hoy}T00:00:00.000Z`)
+    .lt('created_at', `${hoy}T23:59:59.999Z`)
+
+  const puntosRestantes = 100 - (postulacionesHoy ?? 0) * 10
+
+  // Casos ya postulados
+  const { data: misPostulaciones } = await admin
+    .from('postulaciones').select('caso_id').eq('abogado_id', user.id)
+  const casosPostuladosArr = (misPostulaciones ?? []).map(p => p.caso_id)
+
+  // Pool de casos — incluye datos de contacto anónimo
+  const { data: casos } = await admin
+    .from('casos')
+    .select(`
+      id, titulo, descripcion, area_legal, estado, created_at, postulaciones_count,
+      nombre_contacto, email_contacto, telefono_contacto,
+      profiles!casos_cliente_id_fkey(nombre, apellido)
+    `)
+    .eq('estado', 'pendiente')
+    .is('abogado_id', null)
+    .lt('postulaciones_count', 3)
+    .order('created_at', { ascending: false })
+
+  // Documentos de todos los casos del pool (son pocos, es eficiente)
+  const casoIds = (casos ?? []).map(c => c.id)
+  let documentosPorCaso: Record<string, { id: string; nombre: string; url: string; tipo: string; created_at: string }[]> = {}
+
+  if (casoIds.length > 0) {
+    const { data: docs } = await admin
+      .from('caso_documentos')
+      .select('id, caso_id, nombre, url, tipo, created_at')
+      .in('caso_id', casoIds)
+      .order('created_at', { ascending: true })
+
+    for (const doc of docs ?? []) {
+      if (!documentosPorCaso[doc.caso_id]) documentosPorCaso[doc.caso_id] = []
+      documentosPorCaso[doc.caso_id].push(doc)
+    }
+  }
+
+  return (
+    <PoolExplorar
+      casos={casos ?? []}
+      casosPostulados={new Set(casosPostuladosArr)}
+      puntosRestantes={puntosRestantes}
+      postulacionesHoy={postulacionesHoy ?? 0}
+      noVerificado={!lawyerProfile?.verified}
+      documentosPorCaso={documentosPorCaso}
     />
   )
 }
@@ -2751,6 +3497,147 @@ export default function PerfilAbogado() {
     </div>
   )
 }
+===== ./app/dashboard/admin/casos/[id]/AceptarPostulacion.tsx =====
+// app/dashboard/admin/casos/[id]/AceptarPostulacion.tsx
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+
+interface Postulacion {
+  id: string
+  abogado_id: string
+  nombre: string
+  apellido: string
+  especialidades: string[]
+  mensaje: string | null
+  created_at: string
+}
+
+interface Props {
+  casoId: string
+  postulaciones: Postulacion[]
+}
+
+export default function AceptarPostulacion({ casoId, postulaciones }: Props) {
+  const router = useRouter()
+  const [loading, setLoading] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleAceptar(postulacionId: string) {
+    setLoading(postulacionId)
+    setError(null)
+
+    const res = await fetch('/api/admin/aceptar-postulacion', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ postulacion_id: postulacionId }),
+    })
+
+    const data = await res.json()
+    setLoading(null)
+
+    if (!res.ok) {
+      setError(data.error ?? 'Error al aceptar la postulación')
+      return
+    }
+
+    router.refresh()
+  }
+
+  if (postulaciones.length === 0) {
+    return (
+      <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-taupe)', fontStyle: 'italic' }}>
+        Aún no hay postulaciones para este caso.
+      </p>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {error && (
+        <p style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: '#dc2626', padding: '10px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+          {error}
+        </p>
+      )}
+      {postulaciones.map((p) => (
+        <div
+          key={p.id}
+          style={{
+            background: 'var(--dls-cream)',
+            border: '1px solid var(--dls-hairline)',
+            padding: '18px 20px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 16,
+          }}
+        >
+          {/* Avatar */}
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: '50%',
+              background: 'rgba(15,30,58,0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: 14, color: 'var(--dls-navy)', fontWeight: 500 }}>
+              {p.nombre[0]}{p.apellido[0]}
+            </span>
+          </div>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 14, color: 'var(--dls-navy)', marginBottom: 4 }}>
+              {p.nombre} {p.apellido}
+            </p>
+            {p.especialidades.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+                {p.especialidades.slice(0, 3).map((e) => (
+                  <span key={e} style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--dls-champagne)', background: 'rgba(201,163,90,0.1)', padding: '2px 8px' }}>
+                    {e}
+                  </span>
+                ))}
+              </div>
+            )}
+            {p.mensaje && (
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--dls-taupe)', lineHeight: 1.6, fontStyle: 'italic' }}>
+                "{p.mensaje}"
+              </p>
+            )}
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-taupe)', marginTop: 6 }}>
+              {new Date(p.created_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
+            </p>
+          </div>
+
+          <button
+            onClick={() => handleAceptar(p.id)}
+            disabled={loading === p.id}
+            style={{
+              flexShrink: 0,
+              fontFamily: 'var(--font-body)',
+              fontSize: 11,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              background: 'var(--dls-navy)',
+              color: 'var(--dls-champagne)',
+              border: 'none',
+              padding: '10px 18px',
+              cursor: loading === p.id ? 'wait' : 'pointer',
+              opacity: loading === p.id ? 0.6 : 1,
+              transition: 'opacity 0.15s',
+            }}
+          >
+            {loading === p.id ? 'Procesando…' : 'Aceptar'}
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
 ===== ./app/dashboard/admin/casos/[id]/AsignarAbogado.tsx =====
 "use client"
 
@@ -2829,11 +3716,15 @@ export default function AsignarAbogado({ casoId, abogadoActualId, abogados }: Pr
   )
 }
 ===== ./app/dashboard/admin/casos/[id]/page.tsx =====
+// app/dashboard/admin/casos/[id]/page.tsx
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
 import AsignarAbogado from './AsignarAbogado'
+import AceptarPostulacion from './AceptarPostulacion'
+import { EstadoBadge } from '@/components/casos/EstadoBadge'
+import type { EstadoCaso } from '@/lib/types/caso'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -2843,23 +3734,16 @@ export default async function DetalleCasoAdmin({ params }: Props) {
   const { id } = await params
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
+  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   if (profile?.role !== 'admin') redirect('/dashboard')
 
-  // A partir de aquí usamos adminClient para bypasear RLS
   const adminClient = createAdminClient()
 
   const { data: caso } = await adminClient
     .from('casos')
-    .select('id, titulo, descripcion, area_legal, estado, created_at, abogado_id, cliente_id')
+    .select('id, titulo, descripcion, area_legal, estado, created_at, abogado_id, cliente_id, postulaciones_count')
     .eq('id', id)
     .single()
 
@@ -2871,69 +3755,152 @@ export default async function DetalleCasoAdmin({ params }: Props) {
     .eq('id', caso.cliente_id)
     .single()
 
+  // Postulaciones del caso (solo si está pendiente sin abogado)
+  const { data: postulacionesRaw } = await adminClient
+    .from('postulaciones')
+    .select(`
+      id, abogado_id, mensaje, estado, created_at,
+      profiles!postulaciones_abogado_id_fkey(nombre, apellido),
+      lawyer_profiles!postulaciones_abogado_id_fkey(especialidades)
+    `)
+    .eq('caso_id', id)
+    .eq('estado', 'pendiente')
+    .order('created_at', { ascending: true })
+
+  const postulaciones = (postulacionesRaw ?? []).map((p) => {
+    const perfil = Array.isArray(p.profiles) ? p.profiles[0] : p.profiles
+    const lp = Array.isArray(p.lawyer_profiles) ? p.lawyer_profiles[0] : p.lawyer_profiles
+    return {
+      id: p.id,
+      abogado_id: p.abogado_id,
+      nombre: perfil?.nombre ?? '',
+      apellido: perfil?.apellido ?? '',
+      especialidades: (lp?.especialidades as string[]) ?? [],
+      mensaje: p.mensaje,
+      created_at: p.created_at,
+    }
+  })
+
+  // Abogados para asignación manual
   const { data: abogados } = await adminClient
     .from('lawyer_profiles')
     .select('id, especialidades, profiles(nombre, apellido)')
     .eq('verified', true)
 
-  const ESTADO_ESTILOS: Record<string, string> = {
-    pendiente: "bg-yellow-100 text-yellow-700",
-    asignado: "bg-blue-100 text-blue-700",
-    en_progreso: "bg-purple-100 text-purple-700",
-    cerrado: "bg-gray-100 text-gray-500",
-  }
-
   return (
-    <main className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-2xl mx-auto space-y-6">
-        <Link
-          href="/dashboard/admin"
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          ← Volver al panel
-        </Link>
+    <div style={{ maxWidth: 800, margin: '0 auto' }}>
 
-        <div className="bg-white border rounded-xl p-6 space-y-4">
-          <div className="flex items-start justify-between gap-4">
-            <h1 className="text-xl font-semibold">{caso.titulo}</h1>
-            <span className={`text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap ${ESTADO_ESTILOS[caso.estado] ?? "bg-gray-100"}`}>
-              {caso.estado}
-            </span>
+      {/* Volver */}
+      <Link
+        href="/dashboard/admin"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          fontFamily: 'var(--font-body)',
+          fontSize: 11,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          color: 'var(--dls-taupe)',
+          textDecoration: 'none',
+          marginBottom: 28,
+        }}
+      >
+        ← Volver al panel
+      </Link>
+
+      {/* Header del caso */}
+      <div
+        style={{
+          background: 'var(--dls-white)',
+          border: '1px solid var(--dls-hairline)',
+          padding: '28px',
+          marginBottom: 20,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 26, color: 'var(--dls-navy)', lineHeight: 1.2 }}>
+            {caso.titulo}
+          </h1>
+          <EstadoBadge estado={caso.estado as EstadoCaso} />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+          <div>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 4 }}>Área</p>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--dls-navy)' }}>{caso.area_legal}</p>
           </div>
-
-          <div className="text-sm text-gray-500 space-y-1">
-            <p><span className="font-medium text-gray-700">Área:</span> {caso.area_legal}</p>
-            <p>
-              <span className="font-medium text-gray-700">Cliente:</span>{" "}
+          <div>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 4 }}>Creado</p>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--dls-navy)' }}>
+              {new Date(caso.created_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+          </div>
+          <div>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 4 }}>Cliente</p>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--dls-navy)' }}>
               {cliente?.nombre} {cliente?.apellido} · {cliente?.email}
             </p>
-            <p><span className="font-medium text-gray-700">Creado:</span> {new Date(caso.created_at).toLocaleDateString('es-CL')}</p>
           </div>
-
           <div>
-            <p className="text-sm font-medium text-gray-700 mb-1">Descripción</p>
-            <p className="text-sm text-gray-600 leading-relaxed">{caso.descripcion}</p>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 4 }}>Postulaciones</p>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--dls-navy)' }}>
+              {caso.postulaciones_count ?? 0} / 3
+            </p>
           </div>
         </div>
 
-        <div className="bg-white border rounded-xl p-6 space-y-4">
-          <h2 className="font-semibold">Asignar abogado</h2>
-          <AsignarAbogado
-            casoId={caso.id}
-            abogadoActualId={caso.abogado_id}
-            abogados={(abogados ?? []).map((a) => {
-              const perfil = a.profiles as { nombre: string; apellido: string } | { nombre: string; apellido: string }[] | null
-              const p = Array.isArray(perfil) ? perfil[0] : perfil
-              return {
-                id: a.id,
-                nombre: `${p?.nombre ?? ''} ${p?.apellido ?? ''}`.trim(),
-                especialidades: (a.especialidades as string[]) ?? [],
-              }
-            })}
-          />
+        <div>
+          <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 8 }}>Descripción</p>
+          <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: 1.75, color: 'var(--dls-navy-mid)' }}>{caso.descripcion}</p>
         </div>
       </div>
-    </main>
+
+      {/* Postulaciones del pool */}
+      {caso.estado === 'pendiente' && !caso.abogado_id && (
+        <div
+          style={{
+            background: 'var(--dls-white)',
+            border: '1px solid var(--dls-hairline)',
+            padding: '28px',
+            marginBottom: 20,
+          }}
+        >
+          <div className="eyebrow" style={{ marginBottom: 6, color: 'var(--dls-navy)' }}>Postulaciones recibidas</div>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 20, color: 'var(--dls-navy)', marginBottom: 20 }}>
+            Abogados interesados
+          </h2>
+          <AceptarPostulacion casoId={caso.id} postulaciones={postulaciones} />
+        </div>
+      )}
+
+      {/* Asignación manual */}
+      <div
+        style={{
+          background: 'var(--dls-white)',
+          border: '1px solid var(--dls-hairline)',
+          padding: '28px',
+        }}
+      >
+        <div className="eyebrow" style={{ marginBottom: 6, color: 'var(--dls-navy)' }}>Asignación manual</div>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 20, color: 'var(--dls-navy)', marginBottom: 20 }}>
+          Asignar abogado directamente
+        </h2>
+        <AsignarAbogado
+          casoId={caso.id}
+          abogadoActualId={caso.abogado_id}
+          abogados={(abogados ?? []).map((a) => {
+            const perfil = a.profiles as { nombre: string; apellido: string } | { nombre: string; apellido: string }[] | null
+            const p = Array.isArray(perfil) ? perfil[0] : perfil
+            return {
+              id: a.id,
+              nombre: `${p?.nombre ?? ''} ${p?.apellido ?? ''}`.trim(),
+              especialidades: (a.especialidades as string[]) ?? [],
+            }
+          })}
+        />
+      </div>
+    </div>
   )
 }
 ===== ./app/dashboard/admin/page.tsx =====
@@ -3987,6 +4954,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { EstadoBadge } from '@/components/casos/EstadoBadge'
 import { BadgeNoLeidos } from '@/components/ui/badge'
+import { VincularCodigo } from '@/components/cliente/VincularCodigo'
 import { ESTADO_LABELS, type EstadoCaso } from '@/lib/types/caso'
 
 const ESTADOS_MACRO = new Set(['pendiente', 'asignado', 'cerrado'])
@@ -4068,10 +5036,13 @@ export default async function DashboardClientePage() {
             </em>
           </h1>
         </div>
-        <Link href="/dashboard/cliente/casos/nuevo" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          <IconPlus />
-          <span>Nuevo caso</span>
-        </Link>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <VincularCodigo />
+          <Link href="/dashboard/cliente/casos/nuevo" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <IconPlus />
+            <span>Nuevo caso</span>
+          </Link>
+        </div>
       </div>
 
       {/* Stats */}
@@ -4108,10 +5079,12 @@ export default async function DashboardClientePage() {
             <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 22, color: 'var(--dls-taupe)', marginBottom: 16 }}>
               No tienes casos aún
             </div>
-            <Link href="/dashboard/cliente/casos/nuevo" className="btn-secondary">
-              <span>Crear tu primer caso</span>
-              <IconArrow />
-            </Link>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <Link href="/dashboard/cliente/casos/nuevo" className="btn-secondary">
+                <span>Crear tu primer caso</span>
+                <IconArrow />
+              </Link>
+            </div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -4189,6 +5162,7 @@ export default async function DashboardLayout({
     ],
     abogado: [
       { href: '/dashboard/abogado', label: 'Mis casos' },
+      { href: '/dashboard/abogado/explorar', label: 'Explorar' },
       { href: '/dashboard/abogado/perfil', label: 'Mi perfil' },
     ],
     admin: [
@@ -4378,6 +5352,7 @@ import Link from "next/link";
 import { NavLogo } from "@/components/shared/NavLogo";
 import { createClient } from "@/lib/supabase/server";
 import { LogoutButton } from '@/components/shared/LogoutButton'
+import { CasoAnonimoWidget } from '@/components/landing/CasoAnonimoWidget'
 
 const IconCheck = () => (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -4430,6 +5405,7 @@ export default async function LandingPage() {
             ) : (
               <>
                 <Link href="/abogados" className="nav-link">Ver abogados</Link>
+                <Link href="/seguimiento" className="nav-link">Seguimiento</Link>
                 <Link href="/login" className="nav-link">Iniciar sesión</Link>
                 <Link href="/registro" className="btn-primary" style={{ padding: "10px 20px", fontSize: 10 }}>
                   <span>Registrarse</span>
@@ -4456,8 +5432,9 @@ export default async function LandingPage() {
               <p className="animate-fade-up delay-200" style={{ fontFamily: "var(--font-body)", fontSize: 17, lineHeight: 1.7, color: "var(--dls-navy-mid)", marginBottom: 40, maxWidth: 440 }}>
                 Conectamos personas con abogados verificados. Acompañamos cada proceso legal con claridad, transparencia y compromiso profesional.
               </p>
+              {/* ── CTAs hero — "Necesito un abogado" abre el drawer ── */}
               <div className="animate-fade-up delay-300" style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
-                <Link href="/registro?role=cliente" className="btn-primary"><span>Necesito un abogado</span><IconArrow /></Link>
+                <CasoAnonimoWidget />
                 <Link href="/registro?role=abogado" className="btn-secondary"><span>Soy abogado</span><IconArrow /></Link>
               </div>
               <div className="animate-fade-up delay-400" style={{ display: "flex", gap: 40, marginTop: 56, paddingTop: 32, borderTop: "1px solid var(--dls-hairline)" }}>
@@ -4513,9 +5490,9 @@ export default async function LandingPage() {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 2 }}>
             {[
-              { roman: "I",   title: "Publica tu caso",         desc: "Describe tu situación y el área en la que necesitas ayuda. Sin compromiso, sin costo inicial." },
-              { roman: "II",  title: "Te asignamos un abogado", desc: "Un profesional verificado y especialista en tu área evalúa tu caso y te contacta." },
-              { roman: "III", title: "Resuelve con claridad",   desc: "Comunícate directamente desde la plataforma y sigue el progreso de tu proceso legal." },
+              { roman: "I",   title: "Cuéntanos tu caso",        desc: "Describe tu situación sin necesidad de crear cuenta. Recibirás un código de seguimiento al instante." },
+              { roman: "II",  title: "Te asignamos un abogado",  desc: "Un profesional verificado y especialista en tu área evalúa tu caso y te contacta." },
+              { roman: "III", title: "Resuelve con claridad",    desc: "Comunícate directamente desde la plataforma y sigue el progreso de tu proceso legal." },
             ].map((step, i) => (
               <div key={step.roman} className="card-dls" style={{ background: i === 1 ? "var(--dls-navy)" : "var(--dls-white)", borderColor: i === 1 ? "var(--dls-navy)" : "var(--dls-hairline)", padding: "48px 40px" }}>
                 <div className="roman-number" style={{ fontSize: 11, color: "var(--dls-champagne)", marginBottom: 24, display: "flex", alignItems: "center", gap: 8 }}>
@@ -4548,7 +5525,7 @@ export default async function LandingPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
               {[
                 { title: "Abogados verificados",  desc: "Validamos RUT, número de colegio y experiencia antes de publicar cualquier perfil." },
-                { title: "Especialidades claras", desc: "Filtra por área legal: familia, laboral, civil, penal, inmigración y más." },
+                { title: "Sin cuenta requerida",  desc: "Publica tu caso de inmediato. Recibes un código de seguimiento y puedes vincularlo cuando quieras." },
                 { title: "Comunicación directa",  desc: "Mensajería integrada con tiempo real para coordinar sin salir de la plataforma." },
                 { title: "Seguimiento del caso",  desc: "Conoce el estado en todo momento: pendiente, asignado, en progreso o cerrado." },
               ].map((b) => (
@@ -4606,6 +5583,7 @@ export default async function LandingPage() {
           </div>
           <div style={{ display: "flex", gap: 32, alignItems: "center" }}>
             <Link href="/abogados" className="nav-link" style={{ fontSize: 10 }}>Abogados</Link>
+            <Link href="/seguimiento" className="nav-link" style={{ fontSize: 10 }}>Seguimiento</Link>
             <Link href="/login"    className="nav-link" style={{ fontSize: 10 }}>Ingresar</Link>
             <Link href="/registro" className="nav-link" style={{ fontSize: 10 }}>Registrarse</Link>
           </div>
@@ -4617,6 +5595,537 @@ export default async function LandingPage() {
       </footer>
     </div>
   );
+}
+===== ./app/seguimiento/[codigo]/page.tsx =====
+// app/seguimiento/[codigo]/page.tsx
+import { notFound } from 'next/navigation'
+import Link from 'next/link'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { NavLogo } from '@/components/shared/NavLogo'
+import { ESTADO_LABELS, ESTADO_COLORS, type EstadoCaso } from '@/lib/types/caso'
+import type { Metadata } from 'next'
+
+interface Props { params: Promise<{ codigo: string }> }
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { codigo } = await params
+  return { title: `Seguimiento ${codigo} | Marketplace Legal` }
+}
+
+// ── Mapa de progreso visual ───────────────────────────────────────────────────
+const HITOS = [
+  { key: 'pendiente',  label: 'Recibido' },
+  { key: 'asignado',   label: 'Asignado' },
+  { key: 'en_curso',   label: 'En curso' },
+  { key: 'cerrado',    label: 'Cerrado' },
+]
+
+function hitoIndex(estado: string): number {
+  if (estado === 'pendiente') return 0
+  if (estado === 'asignado')  return 1
+  if (estado === 'cerrado')   return 3
+  return 2 // estados intermedios = en curso
+}
+
+const IconArrow = () => (
+  <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="2" y1="7" x2="12" y2="7" /><polyline points="8,3 12,7 8,11" />
+  </svg>
+)
+const IconDoc = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="1" width="10" height="12" rx="1" />
+    <line x1="4" y1="5" x2="10" y2="5" /><line x1="4" y1="8" x2="8" y2="8" />
+  </svg>
+)
+
+export default async function SeguimientoCodigoPage({ params }: Props) {
+  const { codigo } = await params
+  const codigoUpper = codigo.toUpperCase()
+  const admin = createAdminClient()
+
+  // Buscar el caso por código de seguimiento
+  const { data: caso, error } = await admin
+    .from('casos')
+    .select(`
+      id, titulo, descripcion, area_legal, estado,
+      created_at, updated_at,
+      nombre_contacto, email_contacto,
+      abogado_id, postulaciones_count
+    `)
+    .eq('codigo_seguimiento', codigoUpper)
+    .single()
+
+  if (error || !caso) notFound()
+
+  // Datos del abogado (si está asignado)
+  let abogado: { nombre: string; apellido: string; especialidades: string[] } | null = null
+  if (caso.abogado_id) {
+    const { data: perfil } = await admin
+      .from('profiles')
+      .select('nombre, apellido')
+      .eq('id', caso.abogado_id)
+      .single()
+    const { data: lp } = await admin
+      .from('lawyer_profiles')
+      .select('especialidades')
+      .eq('id', caso.abogado_id)
+      .single()
+    if (perfil) {
+      abogado = {
+        nombre: perfil.nombre,
+        apellido: perfil.apellido,
+        especialidades: (lp?.especialidades as string[]) ?? [],
+      }
+    }
+  }
+
+  // Documentos del caso
+  const { data: documentos } = await admin
+    .from('caso_documentos')
+    .select('id, nombre, url, tipo, created_at')
+    .eq('caso_id', caso.id)
+    .order('created_at', { ascending: true })
+
+  // Eventos del caso
+  const { data: eventos } = await admin
+    .from('caso_eventos')
+    .select('id, tipo, descripcion, fecha')
+    .eq('caso_id', caso.id)
+    .order('fecha', { ascending: true })
+
+  const estado = caso.estado as EstadoCaso
+  const estadoColor = ESTADO_COLORS[estado] ?? { bg: 'rgba(107,114,128,0.1)', color: '#6b7280', dot: '#9ca3af' }
+  const hitoActual = hitoIndex(estado)
+  const porcentaje = Math.round((hitoActual / 3) * 100)
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--dls-cream)' }}>
+
+      {/* Nav */}
+      <nav style={{ background: 'var(--dls-navy)', borderBottom: '1px solid rgba(201,163,90,0.2)', position: 'sticky', top: 0, zIndex: 50 }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+            <Link href="/seguimiento" style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'rgba(250,244,237,0.45)', textDecoration: 'none', letterSpacing: '0.06em' }}>
+              ← Seguimiento
+            </Link>
+            <div style={{ width: 1, height: 16, background: 'rgba(201,163,90,0.2)' }} />
+            <NavLogo />
+          </div>
+          <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+            <Link href="/login" className="nav-link">Iniciar sesión</Link>
+            <Link href="/registro" className="btn-primary" style={{ padding: '9px 18px', fontSize: 10 }}>
+              <span>Registrarse</span><IconArrow />
+            </Link>
+          </div>
+        </div>
+      </nav>
+
+      {/* Banner del código */}
+      <div style={{ background: 'var(--dls-navy)', borderBottom: '1px solid rgba(201,163,90,0.15)', padding: '16px 24px' }}>
+        <div style={{ maxWidth: 860, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(201,163,90,0.65)' }}>Código</div>
+            <div style={{ fontFamily: 'monospace', fontSize: 18, fontWeight: 700, color: 'var(--dls-champagne)', letterSpacing: '0.1em' }}>{codigoUpper}</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: estadoColor.dot, flexShrink: 0, display: 'inline-block' }} />
+            <span style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'rgba(250,244,237,0.6)', letterSpacing: '0.04em' }}>
+              {ESTADO_LABELS[estado] ?? estado}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Contenido */}
+      <div style={{ maxWidth: 860, margin: '0 auto', padding: '40px 24px 80px' }}>
+
+        {/* ── Barra de progreso visual ─────────────────────────── */}
+        <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: '28px 32px', marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <div>
+              <div className="eyebrow" style={{ marginBottom: 4, color: 'var(--dls-navy)' }}>Estado actual</div>
+              <span
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.06em',
+                  textTransform: 'uppercase', fontWeight: 600,
+                  color: estadoColor.color, background: estadoColor.bg,
+                  padding: '5px 12px',
+                }}
+              >
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: estadoColor.dot, flexShrink: 0, display: 'inline-block' }} />
+                {ESTADO_LABELS[estado] ?? estado}
+              </span>
+            </div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 28, color: 'var(--dls-navy)' }}>
+              {porcentaje}%
+            </div>
+          </div>
+
+          {/* Barra */}
+          <div style={{ height: 4, background: 'var(--dls-hairline)', marginBottom: 20, position: 'relative' }}>
+            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${porcentaje}%`, background: 'var(--dls-champagne)', transition: 'width 0.5s ease' }} />
+          </div>
+
+          {/* Hitos */}
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            {HITOS.map((hito, i) => {
+              const completado = i <= hitoActual
+              const activo = i === hitoActual
+              return (
+                <div key={hito.key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                  <div style={{
+                    width: 28, height: 28, borderRadius: '50%',
+                    background: completado ? 'var(--dls-navy)' : 'var(--dls-hairline)',
+                    border: activo ? '2px solid var(--dls-champagne)' : '2px solid transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {completado && (
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <polyline points="2,6 4.5,8.5 10,3" stroke="var(--dls-champagne)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </div>
+                  <span style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: completado ? 'var(--dls-navy)' : 'var(--dls-taupe)', fontWeight: activo ? 700 : 400 }}>
+                    {hito.label}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* ── Grid: info principal + lateral ───────────────────── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20, alignItems: 'start' }}>
+
+          {/* Columna principal */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+            {/* Datos del caso */}
+            <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: '28px' }}>
+              <div className="eyebrow" style={{ marginBottom: 16, color: 'var(--dls-navy)' }}>Detalle del caso</div>
+              <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 24, color: 'var(--dls-navy)', lineHeight: 1.2, marginBottom: 10 }}>
+                {caso.titulo}
+              </h2>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+                <span style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-champagne)', background: 'rgba(201,163,90,0.1)', padding: '4px 10px' }}>
+                  {caso.area_legal}
+                </span>
+                <span style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--dls-taupe)' }}>
+                  Creado el {new Date(caso.created_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </span>
+              </div>
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: 1.75, color: 'var(--dls-navy-mid)', margin: 0 }}>
+                {caso.descripcion}
+              </p>
+            </div>
+
+            {/* Abogado asignado */}
+            {abogado ? (
+              <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', borderLeft: '3px solid var(--dls-champagne)', padding: '24px 28px' }}>
+                <div className="eyebrow" style={{ marginBottom: 12, color: 'var(--dls-navy)' }}>Abogado asignado</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(15,30,58,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: 'var(--dls-navy)', fontWeight: 500, lineHeight: 1 }}>
+                      {abogado.nombre[0]}{abogado.apellido[0]}
+                    </span>
+                  </div>
+                  <div>
+                    <p style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 16, color: 'var(--dls-navy)', marginBottom: 4 }}>
+                      {abogado.nombre} {abogado.apellido}
+                    </p>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {abogado.especialidades.slice(0, 3).map(e => (
+                        <span key={e} style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--dls-champagne)', background: 'rgba(201,163,90,0.1)', padding: '2px 8px' }}>{e}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : caso.estado === 'pendiente' ? (
+              <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: '24px 28px' }}>
+                <div className="eyebrow" style={{ marginBottom: 10, color: 'var(--dls-navy)' }}>Asignación</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--dls-champagne)', animation: 'champagnePulse 1.5s ease infinite' }} />
+                  <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--dls-taupe)', margin: 0 }}>
+                    Tu caso está en cola de revisión. Un abogado será asignado próximamente.
+                    {(caso.postulaciones_count ?? 0) > 0 && (
+                      <span style={{ color: 'var(--dls-navy)', fontWeight: 600 }}> {caso.postulaciones_count} abogado{caso.postulaciones_count !== 1 ? 's' : ''} interesado{caso.postulaciones_count !== 1 ? 's' : ''}.</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Documentos */}
+            {documentos && documentos.length > 0 && (
+              <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: '28px' }}>
+                <div className="eyebrow" style={{ marginBottom: 16, color: 'var(--dls-navy)' }}>Documentos adjuntos ({documentos.length})</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {documentos.map(doc => (
+                    <a
+                      key={doc.id}
+                      href={doc.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        padding: '12px 16px',
+                        background: 'var(--dls-cream)', border: '1px solid var(--dls-hairline)',
+                        textDecoration: 'none',
+                        transition: 'border-color 0.15s',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--dls-champagne)')}
+                      onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--dls-hairline)')}
+                    >
+                      <span style={{ color: 'var(--dls-champagne)', flexShrink: 0 }}><IconDoc /></span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-navy)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.nombre}</p>
+                        <p style={{ fontFamily: 'var(--font-body)', fontSize: 10, color: 'var(--dls-taupe)', margin: 0, letterSpacing: '0.04em' }}>
+                          {new Date(doc.created_at).toLocaleDateString('es-CL')}
+                        </p>
+                      </div>
+                      <span style={{ fontFamily: 'var(--font-body)', fontSize: 10, color: 'var(--dls-champagne)', letterSpacing: '0.06em', textTransform: 'uppercase', flexShrink: 0 }}>Abrir →</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Timeline de eventos */}
+            {eventos && eventos.length > 0 && (
+              <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: '28px' }}>
+                <div className="eyebrow" style={{ marginBottom: 20, color: 'var(--dls-navy)' }}>Historial del caso</div>
+                <div style={{ position: 'relative', paddingLeft: 24 }}>
+                  <div style={{ position: 'absolute', left: 7, top: 8, bottom: 8, width: 1, background: 'var(--dls-hairline)' }} />
+                  {eventos.map((ev, i) => (
+                    <div key={ev.id} style={{ position: 'relative', marginBottom: i < eventos.length - 1 ? 20 : 0 }}>
+                      <div style={{ position: 'absolute', left: -20, top: 4, width: 8, height: 8, borderRadius: '50%', background: 'var(--dls-champagne)', border: '2px solid var(--dls-white)' }} />
+                      <p style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--dls-taupe)', marginBottom: 2, letterSpacing: '0.04em' }}>
+                        {new Date(ev.fecha).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}
+                      </p>
+                      <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--dls-navy)', margin: 0 }}>
+                        {ev.descripcion}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Columna lateral */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, position: 'sticky', top: 84 }}>
+
+            {/* Datos de contacto */}
+            <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: '24px' }}>
+              <div className="eyebrow" style={{ marginBottom: 14, color: 'var(--dls-navy)' }}>Tu información</div>
+              {caso.nombre_contacto && (
+                <div style={{ marginBottom: 10 }}>
+                  <p style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 3 }}>Nombre</p>
+                  <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--dls-navy)', fontWeight: 500 }}>{caso.nombre_contacto}</p>
+                </div>
+              )}
+              {caso.email_contacto && (
+                <div>
+                  <p style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 3 }}>Email</p>
+                  <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-navy)' }}>{caso.email_contacto}</p>
+                </div>
+              )}
+            </div>
+
+            {/* CTA crear cuenta */}
+            <div style={{ background: 'var(--dls-navy)', padding: '24px' }}>
+              <div className="eyebrow" style={{ marginBottom: 10 }}>Acceso completo</div>
+              <p style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 16, color: 'var(--dls-cream)', lineHeight: 1.45, marginBottom: 18, opacity: 0.85 }}>
+                Crea una cuenta para comunicarte con tu abogado y seguir tu caso en detalle.
+              </p>
+              <Link
+                href={`/registro${caso.email_contacto ? `?email=${encodeURIComponent(caso.email_contacto)}` : ''}`}
+                className="btn-primary"
+                style={{ display: 'flex', justifyContent: 'center', padding: '12px 0', width: '100%', boxSizing: 'border-box', fontSize: 11 }}
+              >
+                <span>Crear cuenta gratis</span>
+                <IconArrow />
+              </Link>
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'rgba(250,244,237,0.4)', textAlign: 'center', marginTop: 10, letterSpacing: '0.04em' }}>
+                El caso se vinculará automáticamente
+              </p>
+            </div>
+
+            {/* Última actualización */}
+            <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: '16px 20px' }}>
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 4 }}>Última actualización</p>
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-navy)' }}>
+                {new Date(caso.updated_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+===== ./app/seguimiento/page.tsx =====
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { NavLogo } from '@/components/shared/NavLogo'
+
+const IconArrow = () => (
+  <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="2" y1="7" x2="12" y2="7" /><polyline points="8,3 12,7 8,11" />
+  </svg>
+)
+
+export default function SeguimientoPage() {
+  const router = useRouter()
+  const [codigo, setCodigo] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  function handleBuscar() {
+    const clean = codigo.trim().toUpperCase()
+    if (!clean) { setError('Ingresa tu código de seguimiento.'); return }
+    if (!clean.startsWith('ML-') || clean.length < 6) {
+      setError('El código debe tener el formato ML-XXXXXX.')
+      return
+    }
+    setError(null)
+    router.push(`/seguimiento/${clean}`)
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--dls-cream)', display: 'flex', flexDirection: 'column' }}>
+
+      {/* Nav */}
+      <nav style={{ background: 'var(--dls-navy)', borderBottom: '1px solid rgba(201,163,90,0.2)' }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+            <Link href="/" style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'rgba(250,244,237,0.45)', textDecoration: 'none', letterSpacing: '0.06em' }}>
+              ← Inicio
+            </Link>
+            <div style={{ width: 1, height: 16, background: 'rgba(201,163,90,0.2)' }} />
+            <NavLogo />
+          </div>
+          <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+            <Link href="/login" className="nav-link">Iniciar sesión</Link>
+            <Link href="/registro" className="btn-primary" style={{ padding: '9px 18px', fontSize: 10 }}>
+              <span>Registrarse</span><IconArrow />
+            </Link>
+          </div>
+        </div>
+      </nav>
+
+      {/* Contenido centrado */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 24px' }}>
+        <div style={{ width: '100%', maxWidth: 480 }}>
+
+          {/* Header */}
+          <div style={{ textAlign: 'center', marginBottom: 40 }}>
+            <div className="eyebrow" style={{ marginBottom: 14, color: 'var(--dls-navy)' }}>Sin cuenta requerida</div>
+            <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 'clamp(32px, 5vw, 48px)', color: 'var(--dls-navy)', lineHeight: 1.1, marginBottom: 14 }}>
+              Seguimiento{' '}
+              <em style={{ color: 'var(--dls-champagne)', fontStyle: 'italic' }}>de caso</em>
+            </h1>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 15, color: 'var(--dls-taupe)', lineHeight: 1.7 }}>
+              Ingresa el código que recibiste por email para ver el estado actual de tu caso.
+            </p>
+          </div>
+
+          {/* Card con formulario */}
+          <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: '36px' }}>
+            <label style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-navy)', display: 'block', marginBottom: 8, fontWeight: 600 }}>
+              Código de seguimiento
+            </label>
+
+            {/* Input de código */}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
+              <input
+                type="text"
+                value={codigo}
+                onChange={e => { setCodigo(e.target.value.toUpperCase()); setError(null) }}
+                onKeyDown={e => e.key === 'Enter' && handleBuscar()}
+                placeholder="ML-XXXXXX"
+                maxLength={9}
+                style={{
+                  flex: 1,
+                  fontFamily: 'monospace',
+                  fontSize: 20,
+                  letterSpacing: '0.12em',
+                  color: 'var(--dls-navy)',
+                  background: 'var(--dls-cream)',
+                  border: `1px solid ${error ? '#dc2626' : 'var(--dls-hairline)'}`,
+                  padding: '12px 16px',
+                  outline: 'none',
+                  textTransform: 'uppercase',
+                  transition: 'border-color 0.15s',
+                }}
+                onFocus={e => !error && (e.currentTarget.style.borderColor = 'var(--dls-champagne)')}
+                onBlur={e => !error && (e.currentTarget.style.borderColor = 'var(--dls-hairline)')}
+              />
+              <button
+                type="button"
+                onClick={handleBuscar}
+                disabled={!codigo.trim()}
+                style={{
+                  background: 'var(--dls-navy)',
+                  color: 'var(--dls-champagne)',
+                  border: 'none',
+                  padding: '12px 20px',
+                  cursor: !codigo.trim() ? 'not-allowed' : 'pointer',
+                  opacity: !codigo.trim() ? 0.45 : 1,
+                  fontFamily: 'var(--font-body)',
+                  fontSize: 11,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  flexShrink: 0,
+                  transition: 'opacity 0.15s',
+                }}
+              >
+                Consultar →
+              </button>
+            </div>
+
+            {error && (
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: '#dc2626', marginBottom: 0 }}>{error}</p>
+            )}
+
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--dls-taupe)', marginTop: 16, lineHeight: 1.6 }}>
+              El código fue enviado al email que registraste al crear tu caso. Tiene el formato <span style={{ fontFamily: 'monospace', color: 'var(--dls-navy)' }}>ML-XXXXXX</span>.
+            </p>
+          </div>
+
+          {/* Separador */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, margin: '28px 0' }}>
+            <div style={{ flex: 1, height: 1, background: 'var(--dls-hairline)' }} />
+            <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-taupe)', letterSpacing: '0.06em' }}>o</span>
+            <div style={{ flex: 1, height: 1, background: 'var(--dls-hairline)' }} />
+          </div>
+
+          {/* CTA crear cuenta */}
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-taupe)', marginBottom: 14 }}>
+              ¿Quieres comunicarte con tu abogado y seguir el caso en detalle?
+            </p>
+            <Link
+              href="/registro"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                fontFamily: 'var(--font-body)', fontSize: 12, letterSpacing: '0.06em', textTransform: 'uppercase',
+                color: 'var(--dls-champagne)', textDecoration: 'none',
+                borderBottom: '1px solid rgba(201,163,90,0.4)', paddingBottom: 2,
+              }}
+            >
+              Crear cuenta gratis <IconArrow />
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 ===== ./components.json =====
 {
@@ -4645,6 +6154,241 @@ export default async function LandingPage() {
   "registries": {}
 }
 
+===== ./components/abogados/AbogadoCard.tsx =====
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+import { StarRating } from '@/components/ui/star-rating'
+
+interface Props {
+  id: string
+  nombre: string
+  apellido: string
+  avatarUrl?: string | null
+  especialidades: string[]
+  bio?: string | null
+  tarifaHora?: number | null
+  yearsExperiencia?: number | null
+  rating?: { promedio: number; total: number }
+}
+
+export function AbogadoCard({
+  id,
+  nombre,
+  apellido,
+  avatarUrl,
+  especialidades,
+  bio,
+  tarifaHora,
+  yearsExperiencia,
+  rating,
+}: Props) {
+  const [hovered, setHovered] = useState(false)
+  const iniciales = `${nombre?.[0] ?? ''}${apellido?.[0] ?? ''}`
+
+  return (
+    <Link
+      href={`/abogados/${id}`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'block',
+        background: 'var(--dls-white)',
+        border: `1px solid ${hovered ? 'var(--dls-champagne)' : 'var(--dls-hairline)'}`,
+        padding: '28px',
+        textDecoration: 'none',
+        position: 'relative',
+        transition: 'border-color 0.2s, box-shadow 0.2s, transform 0.2s',
+        transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
+        boxShadow: hovered
+          ? '0 12px 40px -8px rgba(15,30,58,0.14)'
+          : '0 2px 8px -2px rgba(15,30,58,0.06)',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Barra superior champagne en hover */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 3,
+          background: 'linear-gradient(90deg, var(--dls-champagne), rgba(201,163,90,0.4))',
+          opacity: hovered ? 1 : 0,
+          transition: 'opacity 0.2s',
+        }}
+      />
+
+      {/* Avatar + nombre */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+        <div
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: '50%',
+            background: hovered ? 'var(--dls-navy)' : 'rgba(15,30,58,0.07)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            transition: 'background 0.2s',
+            overflow: 'hidden',
+          }}
+        >
+          {avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={avatarUrl} alt={iniciales} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            <span
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontWeight: 500,
+                fontSize: 18,
+                color: hovered ? 'var(--dls-champagne)' : 'var(--dls-navy)',
+                transition: 'color 0.2s',
+                lineHeight: 1,
+              }}
+            >
+              {iniciales}
+            </span>
+          )}
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h2
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontWeight: 500,
+              fontSize: 20,
+              color: 'var(--dls-navy)',
+              lineHeight: 1.2,
+              marginBottom: 4,
+            }}
+          >
+            {nombre} {apellido}
+          </h2>
+
+          {rating ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <StarRating value={Math.round(rating.promedio)} readonly size="sm" />
+              <span style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--dls-taupe)' }}>
+                ({rating.total})
+              </span>
+            </div>
+          ) : (
+            <span style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--dls-taupe)', letterSpacing: '0.04em' }}>
+              Sin valoraciones aún
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Especialidades */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 16 }}>
+        {(especialidades ?? []).slice(0, 3).map((e) => (
+          <span
+            key={e}
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: 10,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: hovered ? 'var(--dls-champagne)' : 'var(--dls-navy-mid)',
+              background: hovered ? 'rgba(201,163,90,0.1)' : 'rgba(15,30,58,0.06)',
+              padding: '4px 10px',
+              transition: 'background 0.2s, color 0.2s',
+            }}
+          >
+            {e}
+          </span>
+        ))}
+        {especialidades.length > 3 && (
+          <span style={{ fontFamily: 'var(--font-body)', fontSize: 10, color: 'var(--dls-taupe)', padding: '4px 2px' }}>
+            +{especialidades.length - 3}
+          </span>
+        )}
+      </div>
+
+      {/* Bio en hover */}
+      <div
+        style={{
+          overflow: 'hidden',
+          maxHeight: hovered ? 80 : 0,
+          opacity: hovered ? 1 : 0,
+          transition: 'max-height 0.3s ease, opacity 0.2s ease',
+          marginTop: hovered ? 14 : 0,
+        }}
+      >
+        {bio && (
+          <p
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: 13,
+              lineHeight: 1.65,
+              color: 'var(--dls-taupe)',
+              display: '-webkit-box',
+              WebkitLineClamp: 3,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {bio}
+          </p>
+        )}
+      </div>
+
+      {/* Footer: experiencia + tarifa + CTA */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginTop: 20,
+          paddingTop: 16,
+          borderTop: '1px solid var(--dls-hairline)',
+        }}
+      >
+        <div>
+          {yearsExperiencia != null && (
+            <span style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--dls-taupe)' }}>
+              {yearsExperiencia} año{yearsExperiencia !== 1 ? 's' : ''} exp.
+            </span>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {tarifaHora != null && (
+            <span
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontWeight: 500,
+                fontSize: 16,
+                color: hovered ? 'var(--dls-champagne)' : 'var(--dls-navy)',
+                transition: 'color 0.2s',
+              }}
+            >
+              ${tarifaHora.toLocaleString('es-CL')}/hr
+            </span>
+          )}
+          <span
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: 11,
+              letterSpacing: '0.06em',
+              color: hovered ? 'var(--dls-champagne)' : 'var(--dls-taupe)',
+              transition: 'color 0.2s',
+              textTransform: 'uppercase',
+            }}
+          >
+            Ver perfil →
+          </span>
+        </div>
+      </div>
+    </Link>
+  )
+}
 ===== ./components/abogados/FiltrosAbogados.tsx =====
 // components/abogados/FiltrosAbogados.tsx
 'use client'
@@ -4672,64 +6416,97 @@ function FiltrosInner({ especialidades }: Props) {
     [router, searchParams]
   )
 
+  const inputStyle: React.CSSProperties = {
+    fontFamily: 'var(--font-body)',
+    fontSize: 13,
+    color: 'var(--dls-navy)',
+    background: 'var(--dls-white)',
+    border: '1px solid var(--dls-hairline)',
+    padding: '10px 14px',
+    outline: 'none',
+    width: '100%',
+    letterSpacing: '0.02em',
+    transition: 'border-color 0.15s',
+  }
+
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
-      <div className="flex flex-wrap gap-3">
-        {/* Búsqueda */}
-        <div className="flex-1 min-w-[200px]">
-          <input
-            type="text"
-            placeholder="Buscar por nombre, especialidad..."
-            defaultValue={searchParams.get('q') ?? ''}
-            onChange={(e) => actualizar('q', e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        {/* Especialidad */}
-        <select
-          defaultValue={searchParams.get('especialidad') ?? ''}
-          onChange={(e) => actualizar('especialidad', e.target.value)}
-          className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Todas las especialidades</option>
-          {especialidades.map((e) => (
-            <option key={e} value={e}>{e}</option>
-          ))}
-        </select>
-
-        {/* Tarifa máxima */}
-        <select
-          defaultValue={searchParams.get('tarifa_max') ?? ''}
-          onChange={(e) => actualizar('tarifa_max', e.target.value)}
-          className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Cualquier tarifa</option>
-          <option value="50000">Hasta $50.000/hr</option>
-          <option value="100000">Hasta $100.000/hr</option>
-          <option value="200000">Hasta $200.000/hr</option>
-        </select>
-
-        {/* Años de experiencia */}
-        <select
-          defaultValue={searchParams.get('experiencia_min') ?? ''}
-          onChange={(e) => actualizar('experiencia_min', e.target.value)}
-          className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Cualquier experiencia</option>
-          <option value="1">1+ años</option>
-          <option value="3">3+ años</option>
-          <option value="5">5+ años</option>
-          <option value="10">10+ años</option>
-        </select>
+    <div
+      style={{
+        background: 'var(--dls-white)',
+        border: '1px solid var(--dls-hairline)',
+        padding: '20px 24px',
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 12,
+        alignItems: 'center',
+      }}
+    >
+      {/* Búsqueda */}
+      <div style={{ flex: '1 1 220px', minWidth: 200 }}>
+        <input
+          type="text"
+          placeholder="Buscar por nombre, especialidad…"
+          defaultValue={searchParams.get('q') ?? ''}
+          onChange={(e) => actualizar('q', e.target.value)}
+          style={inputStyle}
+          onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--dls-champagne)')}
+          onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--dls-hairline)')}
+        />
       </div>
+
+      {/* Especialidad */}
+      <select
+        defaultValue={searchParams.get('especialidad') ?? ''}
+        onChange={(e) => actualizar('especialidad', e.target.value)}
+        style={{ ...inputStyle, width: 'auto', flex: '0 1 200px', cursor: 'pointer' }}
+        onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--dls-champagne)')}
+        onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--dls-hairline)')}
+      >
+        <option value="">Todas las especialidades</option>
+        {especialidades.map((e) => (
+          <option key={e} value={e}>{e}</option>
+        ))}
+      </select>
+
+      {/* Tarifa máxima */}
+      <select
+        defaultValue={searchParams.get('tarifa_max') ?? ''}
+        onChange={(e) => actualizar('tarifa_max', e.target.value)}
+        style={{ ...inputStyle, width: 'auto', flex: '0 1 180px', cursor: 'pointer' }}
+        onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--dls-champagne)')}
+        onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--dls-hairline)')}
+      >
+        <option value="">Cualquier tarifa</option>
+        <option value="50000">Hasta $50.000/hr</option>
+        <option value="100000">Hasta $100.000/hr</option>
+        <option value="200000">Hasta $200.000/hr</option>
+      </select>
+
+      {/* Años de experiencia */}
+      <select
+        defaultValue={searchParams.get('experiencia_min') ?? ''}
+        onChange={(e) => actualizar('experiencia_min', e.target.value)}
+        style={{ ...inputStyle, width: 'auto', flex: '0 1 180px', cursor: 'pointer' }}
+        onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--dls-champagne)')}
+        onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--dls-hairline)')}
+      >
+        <option value="">Cualquier experiencia</option>
+        <option value="1">1+ años</option>
+        <option value="3">3+ años</option>
+        <option value="5">5+ años</option>
+        <option value="10">10+ años</option>
+      </select>
     </div>
   )
 }
 
 export function FiltrosAbogados({ especialidades }: Props) {
   return (
-    <Suspense fallback={<div className="h-16 bg-gray-100 rounded-xl animate-pulse" />}>
+    <Suspense
+      fallback={
+        <div style={{ height: 60, background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', animation: 'champagnePulse 1.5s ease infinite' }} />
+      }
+    >
       <FiltrosInner especialidades={especialidades} />
     </Suspense>
   )
@@ -6622,6 +8399,533 @@ export function UploadDocumento({ casoId, cerrado }: Props) {
     </div>
   )
 }
+===== ./components/cliente/VincularCodigo.tsx =====
+// components/cliente/VincularCodigo.tsx
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+
+export function VincularCodigo() {
+  const router = useRouter()
+  const [abierto, setAbierto] = useState(false)
+  const [codigo, setCodigo] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [caso, setCaso] = useState<{ id: string; titulo: string; area_legal: string } | null>(null)
+
+  async function handleVincular() {
+    if (!codigo.trim()) return
+    setLoading(true)
+    setError(null)
+    setCaso(null)
+
+    const res = await fetch('/api/casos/vincular', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ codigo: codigo.trim() }),
+    })
+
+    const data = await res.json()
+    setLoading(false)
+
+    if (!res.ok) {
+      setError(data.error ?? 'No se pudo vincular el caso.')
+      return
+    }
+
+    setCaso(data.caso)
+    router.refresh()
+  }
+
+  if (!abierto) {
+    return (
+      <button
+        onClick={() => setAbierto(true)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontFamily: 'var(--font-body)',
+          fontSize: 12,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          color: 'var(--dls-champagne)',
+          background: 'none',
+          border: '1px solid rgba(201,163,90,0.3)',
+          padding: '9px 16px',
+          cursor: 'pointer',
+          transition: 'border-color 0.15s',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--dls-champagne)')}
+        onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(201,163,90,0.3)')}
+      >
+        <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 2l3 3-7 7H2v-3L9 2z" />
+        </svg>
+        Vincular código de seguimiento
+      </button>
+    )
+  }
+
+  return (
+    <div
+      style={{
+        background: 'var(--dls-white)',
+        border: '1px solid var(--dls-hairline)',
+        borderLeft: '2px solid var(--dls-champagne)',
+        padding: '24px 28px',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div>
+          <div className="eyebrow" style={{ marginBottom: 4, color: 'var(--dls-navy)' }}>Vincular caso</div>
+          <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-taupe)', margin: 0, lineHeight: 1.6 }}>
+            ¿Creaste un caso sin cuenta? Ingresa tu código de seguimiento (ej: <span style={{ fontFamily: 'monospace', color: 'var(--dls-navy)' }}>ML-A3F9B2</span>) para vincularlo aquí.
+          </p>
+        </div>
+        <button
+          onClick={() => { setAbierto(false); setError(null); setCaso(null); setCodigo('') }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dls-taupe)', padding: 4 }}
+          aria-label="Cerrar"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="2" y1="2" x2="12" y2="12" /><line x1="12" y1="2" x2="2" y2="12" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Éxito */}
+      {caso ? (
+        <div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '12px 16px',
+              background: 'rgba(5,150,105,0.07)',
+              border: '1px solid rgba(5,150,105,0.2)',
+              marginBottom: 16,
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#059669" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="2,8 6,12 14,4" />
+            </svg>
+            <div>
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: '#059669', fontWeight: 600, margin: 0 }}>
+                ¡Caso vinculado exitosamente!
+              </p>
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--dls-taupe)', margin: 0 }}>
+                {caso.titulo} · {caso.area_legal}
+              </p>
+            </div>
+          </div>
+          <Link
+            href={`/dashboard/cliente/casos/${caso.id}`}
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: 12,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              color: 'var(--dls-champagne)',
+              textDecoration: 'none',
+              borderBottom: '1px solid rgba(201,163,90,0.4)',
+              paddingBottom: 1,
+            }}
+          >
+            Ver mi caso →
+          </Link>
+        </div>
+      ) : (
+        /* Formulario */
+        <div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <input
+              type="text"
+              value={codigo}
+              onChange={(e) => setCodigo(e.target.value.toUpperCase())}
+              placeholder="ML-XXXXXX"
+              maxLength={9}
+              style={{
+                flex: 1,
+                fontFamily: 'monospace',
+                fontSize: 16,
+                letterSpacing: '0.1em',
+                color: 'var(--dls-navy)',
+                background: 'var(--dls-cream)',
+                border: '1px solid var(--dls-hairline)',
+                padding: '10px 14px',
+                outline: 'none',
+                textTransform: 'uppercase',
+              }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--dls-champagne)')}
+              onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--dls-hairline)')}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleVincular() }}
+            />
+            <button
+              onClick={handleVincular}
+              disabled={loading || !codigo.trim()}
+              style={{
+                fontFamily: 'var(--font-body)',
+                fontSize: 12,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                background: 'var(--dls-navy)',
+                color: 'var(--dls-champagne)',
+                border: 'none',
+                padding: '10px 20px',
+                cursor: loading || !codigo.trim() ? 'not-allowed' : 'pointer',
+                opacity: loading || !codigo.trim() ? 0.5 : 1,
+                transition: 'opacity 0.15s',
+                flexShrink: 0,
+              }}
+            >
+              {loading ? '…' : 'Vincular'}
+            </button>
+          </div>
+
+          {error && (
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: '#dc2626', marginTop: 8, margin: '8px 0 0' }}>
+              {error}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+===== ./components/landing/CasoAnonimoWidget.tsx =====
+'use client'
+
+import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import Link from 'next/link'
+
+interface SuccessData {
+  codigo: string
+  email: string
+  titulo: string
+}
+
+const IconArrow = () => (
+  <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="2" y1="7" x2="12" y2="7" /><polyline points="8,3 12,7 8,11" />
+  </svg>
+)
+const IconX = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <line x1="4" y1="4" x2="14" y2="14" /><line x1="14" y1="4" x2="4" y2="14" />
+  </svg>
+)
+const IconCheck = () => (
+  <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3.5,11 8,15.5 18.5,5.5" />
+  </svg>
+)
+
+const BTN_PRIMARY: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 10,
+  background: '#0f1e3a', color: '#c9a35a',
+  padding: '14px 28px',
+  fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 600,
+  letterSpacing: '0.08em', textTransform: 'uppercase',
+  border: 'none', cursor: 'pointer', textDecoration: 'none', userSelect: 'none',
+}
+const INPUT: React.CSSProperties = {
+  width: '100%', fontFamily: 'var(--font-body)', fontSize: 14,
+  color: '#0f1e3a', background: '#f7f3ee',
+  border: '1px solid #e0d8d0', padding: '11px 14px',
+  outline: 'none', boxSizing: 'border-box', lineHeight: 1.5,
+}
+const LABEL: React.CSSProperties = {
+  fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.08em',
+  textTransform: 'uppercase', color: '#2a3a5c',
+  display: 'block', marginBottom: 7, fontWeight: 600,
+}
+
+export function CasoAnonimoWidget() {
+  const [mounted, setMounted] = useState(false)
+  const [abierto, setAbierto] = useState(false)
+  const [archivos, setArchivos] = useState<File[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [exito, setExito] = useState<SuccessData | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [form, setForm] = useState({ nombre: '', email: '', telefono: '', descripcion: '' })
+
+  // Necesario para que createPortal funcione solo en el cliente
+  useEffect(() => { setMounted(true) }, [])
+
+  useEffect(() => {
+    if (!abierto) return
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') cerrar() }
+    document.addEventListener('keydown', handler)
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', handler)
+      document.body.style.overflow = ''
+    }
+  }, [abierto])
+
+  function cerrar() {
+    setAbierto(false)
+    document.body.style.overflow = ''
+    setTimeout(() => {
+      setExito(null); setError(null); setArchivos([])
+      setForm({ nombre: '', email: '', telefono: '', descripcion: '' })
+    }, 200)
+  }
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
+    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
+  }
+
+  function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const nuevos = Array.from(e.target.files ?? [])
+    setArchivos(prev => [...prev, ...nuevos].slice(0, 5))
+    e.target.value = ''
+  }
+
+  async function handleSubmit() {
+    setError(null)
+    if (!form.nombre.trim() || !form.email.trim() || !form.descripcion.trim()) {
+      setError('Nombre, email y descripción son obligatorios.'); return
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      setError('Ingresa un email válido.'); return
+    }
+    if (form.descripcion.trim().length < 30) {
+      setError('Describe tu situación con más detalle (mínimo 30 caracteres).'); return
+    }
+    setLoading(true)
+    const fd = new FormData()
+    fd.append('nombre', form.nombre.trim())
+    fd.append('email', form.email.trim())
+    fd.append('telefono', form.telefono.trim())
+    fd.append('descripcion', form.descripcion.trim())
+    archivos.forEach(f => fd.append('archivos', f))
+    try {
+      const res = await fetch('/api/casos/anonimo', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error ?? 'No se pudo enviar el caso.'); setLoading(false); return }
+      setExito({ codigo: data.codigo, email: form.email, titulo: data.titulo })
+    } catch {
+      setError('Error de conexión. Intenta nuevamente.')
+    }
+    setLoading(false)
+  }
+
+  // ── El modal se renderiza en document.body via Portal ────────────────────
+  const modal = abierto ? (
+    // Overlay: clic fuera cierra
+    <div
+      onClick={cerrar}
+      style={{
+        position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+        zIndex: 99999,
+        background: 'rgba(8,18,42,0.72)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '24px', boxSizing: 'border-box',
+      }}
+    >
+      {/* Modal — clic dentro NO cierra */}
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: '#ffffff', width: '100%', maxWidth: 540,
+          maxHeight: 'calc(100vh - 48px)',
+          display: 'flex', flexDirection: 'column',
+          boxShadow: '0 32px 80px rgba(8,18,42,0.5)',
+          overflowY: 'auto',
+        }}
+      >
+        {/* Header */}
+        <div style={{ background: '#0f1e3a', padding: '22px 28px 18px', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontFamily: 'var(--font-body)', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(201,163,90,0.65)', marginBottom: 5 }}>Sin cuenta requerida</div>
+              <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 26, color: '#faf4ed', lineHeight: 1.15, margin: 0 }}>
+                Cuéntanos tu caso
+              </h2>
+            </div>
+            <button type="button" onClick={cerrar} aria-label="Cerrar"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(250,244,237,0.4)', padding: '4px', lineHeight: 0, marginTop: 2, flexShrink: 0 }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#faf4ed')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(250,244,237,0.4)')}>
+              <IconX />
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, padding: '24px 28px', overflowY: 'auto' }}>
+          {exito ? (
+            /* ── Éxito ── */
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(5,150,105,0.1)', border: '2px solid rgba(5,150,105,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#059669', marginBottom: 14 }}>
+                <IconCheck />
+              </div>
+              <div style={{ fontFamily: 'var(--font-body)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#059669', marginBottom: 6 }}>Caso enviado con éxito</div>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 20, color: '#0f1e3a', marginBottom: 20, lineHeight: 1.2 }}>{exito.titulo}</h3>
+
+              <div style={{ background: '#0f1e3a', padding: '22px 24px', width: '100%', boxSizing: 'border-box', marginBottom: 16 }}>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(201,163,90,0.7)', marginBottom: 10 }}>Código de seguimiento</div>
+                <div style={{ fontFamily: 'monospace', fontSize: 32, fontWeight: 700, color: '#c9a35a', letterSpacing: '0.14em', marginBottom: 8 }}>{exito.codigo}</div>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'rgba(250,244,237,0.5)', lineHeight: 1.6 }}>
+                  Enviado a <strong style={{ color: 'rgba(250,244,237,0.8)' }}>{exito.email}</strong>
+                </div>
+              </div>
+
+              <div style={{ background: '#f7f3ee', border: '1px solid #e0d8d0', padding: '14px 18px', width: '100%', boxSizing: 'border-box', textAlign: 'left', marginBottom: 20 }}>
+                <p style={{ fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 12, color: '#0f1e3a', marginBottom: 10 }}>¿Qué sigue?</p>
+                {['Guarda tu código — lo necesitarás para hacer seguimiento.',
+                  'Regístrate con este email y tu caso se vinculará automáticamente.',
+                  'O ingresa el código manualmente desde tu panel de cliente.'].map((paso, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, marginBottom: i < 2 ? 7 : 0 }}>
+                    <span style={{ fontFamily: 'var(--font-display)', color: '#c9a35a', fontWeight: 500, fontSize: 14, flexShrink: 0, lineHeight: 1.4 }}>{i + 1}.</span>
+                    <p style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: '#a68f85', lineHeight: 1.6, margin: 0 }}>{paso}</p>
+                  </div>
+                ))}
+              </div>
+
+              <Link href={`/registro?email=${encodeURIComponent(exito.email)}`} onClick={cerrar}
+                style={{ ...BTN_PRIMARY, justifyContent: 'center', padding: '14px 0', width: '100%', display: 'flex', boxSizing: 'border-box', marginBottom: 8 }}>
+                <span>Crear cuenta y ver mi caso</span><IconArrow />
+              </Link>
+              <button type="button" onClick={cerrar}
+                style={{ width: '100%', fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#a68f85', background: 'none', border: '1px solid #e0d8d0', padding: '12px 0', cursor: 'pointer' }}>
+                Cerrar
+              </button>
+            </div>
+          ) : (
+            /* ── Formulario ── */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: '#a68f85', lineHeight: 1.7, margin: 0 }}>
+                Describe tu situación y recibirás un <strong style={{ color: '#0f1e3a' }}>código de seguimiento</strong> por email. No necesitas crear una cuenta.
+              </p>
+
+              <div>
+                <label style={LABEL}>Nombre completo *</label>
+                <input name="nombre" type="text" value={form.nombre} onChange={handleChange}
+                  placeholder="Ej: Juan Pérez" style={INPUT}
+                  onFocus={e => (e.currentTarget.style.borderColor = '#c9a35a')}
+                  onBlur={e => (e.currentTarget.style.borderColor = '#e0d8d0')} />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={LABEL}>Email *</label>
+                  <input name="email" type="email" value={form.email} onChange={handleChange}
+                    placeholder="tu@email.com" style={INPUT}
+                    onFocus={e => (e.currentTarget.style.borderColor = '#c9a35a')}
+                    onBlur={e => (e.currentTarget.style.borderColor = '#e0d8d0')} />
+                </div>
+                <div>
+                  <label style={{ ...LABEL, color: '#a68f85' }}>Teléfono <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>(opc.)</span></label>
+                  <input name="telefono" type="tel" value={form.telefono} onChange={handleChange}
+                    placeholder="+56 9 1234 5678" style={INPUT}
+                    onFocus={e => (e.currentTarget.style.borderColor = '#c9a35a')}
+                    onBlur={e => (e.currentTarget.style.borderColor = '#e0d8d0')} />
+                </div>
+              </div>
+
+              <div>
+                <label style={LABEL}>Describe tu situación *</label>
+                <textarea name="descripcion" value={form.descripcion} onChange={handleChange} rows={4}
+                  placeholder="¿Qué ocurrió? ¿Cuándo? ¿Qué necesitas resolver? Cuéntanos con detalle…"
+                  style={{ ...INPUT, resize: 'vertical', lineHeight: 1.7, minHeight: 96 }}
+                  onFocus={e => (e.currentTarget.style.borderColor = '#c9a35a')}
+                  onBlur={e => (e.currentTarget.style.borderColor = '#e0d8d0')} />
+                <p style={{ fontFamily: 'var(--font-body)', fontSize: 10, color: form.descripcion.length < 30 ? '#c9a35a' : '#059669', marginTop: 4 }}>
+                  {form.descripcion.length} caracteres {form.descripcion.length < 30 ? '— mín. 30' : '✓'}
+                </p>
+              </div>
+
+              {/* Documentos */}
+              <div>
+                <label style={{ ...LABEL, color: '#a68f85' }}>
+                  Documentos <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>(opcional, máx. 5)</span>
+                </label>
+                <input ref={fileRef} type="file" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={handleFiles} style={{ display: 'none' }} />
+                <button type="button"
+                  onClick={() => archivos.length < 5 && fileRef.current?.click()}
+                  disabled={archivos.length >= 5}
+                  style={{ width: '100%', border: '1px dashed #c9b89a', background: '#fbf8f4', padding: '14px', cursor: archivos.length >= 5 ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, opacity: archivos.length >= 5 ? 0.5 : 1, boxSizing: 'border-box' }}>
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#a68f85" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10 13V7M7 10l3-3 3 3"/><rect x="2" y="2" width="16" height="16" rx="2" opacity="0.2"/>
+                  </svg>
+                  <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: '#2a3a5c' }}>{archivos.length >= 5 ? 'Máximo alcanzado' : 'Añadir documentos'}</span>
+                  <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: '#a68f85' }}>PDF, Word, imágenes</span>
+                </button>
+                {archivos.length > 0 && (
+                  <div style={{ marginTop: 7, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {archivos.map((f, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 12px', background: '#f7f3ee', border: '1px solid #e0d8d0' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <p style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: '#0f1e3a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 340 }}>{f.name}</p>
+                          <p style={{ fontFamily: 'var(--font-body)', fontSize: 10, color: '#a68f85', margin: 0 }}>{(f.size / 1024).toFixed(0)} KB</p>
+                        </div>
+                        <button type="button" onClick={() => setArchivos(prev => prev.filter((_, j) => j !== i))}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a68f85', padding: '4px', lineHeight: 0, flexShrink: 0 }}>
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                            <line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/>
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {error && (
+                <div style={{ padding: '11px 16px', background: 'rgba(220,38,38,0.06)', borderLeft: '2px solid #dc2626', fontFamily: 'var(--font-body)', fontSize: 13, color: '#dc2626', lineHeight: 1.5 }}>
+                  {error}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer submit */}
+        {!exito && (
+          <div style={{ padding: '14px 28px 22px', borderTop: '1px solid #e8e0d8', flexShrink: 0, background: '#fff' }}>
+            <button type="button" onClick={handleSubmit} disabled={loading}
+              style={{ ...BTN_PRIMARY, width: '100%', justifyContent: 'center', padding: '15px 0', boxSizing: 'border-box', display: 'flex', opacity: loading ? 0.65 : 1, cursor: loading ? 'wait' : 'pointer', fontSize: 12 }}>
+              <span>{loading ? 'Enviando…' : 'Enviar mi caso'}</span>
+              {!loading && <IconArrow />}
+            </button>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: '#a68f85', textAlign: 'center', marginTop: 10, letterSpacing: '0.04em' }}>
+              Sin cuenta, sin compromiso · Recibirás un código por email
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  ) : null
+
+  return (
+    <>
+      {/* Botón trigger — estilos 100% inline */}
+      <button
+        type="button"
+        onClick={() => setAbierto(true)}
+        style={BTN_PRIMARY}
+        onMouseEnter={e => (e.currentTarget.style.opacity = '0.82')}
+        onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+      >
+        <span>Necesito un abogado</span>
+        <IconArrow />
+      </button>
+
+      {/* Portal: renderiza el modal en document.body, fuera del árbol de transforms */}
+      {mounted && createPortal(modal, document.body)}
+    </>
+  )
+}
 ===== ./components/legal-agent/LegalAgentButton.tsx =====
 "use client";
 
@@ -6938,6 +9242,812 @@ export function TypingIndicator() {
       <div className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:0.2s]" />
     </div>
   );
+}
+===== ./components/pool/FiltrosPool.tsx =====
+// components/pool/FiltrosPool.tsx
+'use client'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useCallback, Suspense } from 'react'
+
+const AREAS = [
+  'Derecho de Familia',
+  'Derecho Laboral',
+  'Derecho Civil',
+  'Derecho Penal',
+  'Derecho Comercial',
+  'Derecho Inmobiliario',
+  'Derecho Tributario',
+  'Otro',
+]
+
+function FiltrosInner() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  const actualizar = useCallback(
+    (key: string, value: string) => {
+      const params = new URLSearchParams(searchParams.toString())
+      if (value) params.set(key, value)
+      else params.delete(key)
+      router.push(`/dashboard/abogado/explorar?${params.toString()}`)
+    },
+    [router, searchParams]
+  )
+
+  const inputStyle: React.CSSProperties = {
+    fontFamily: 'var(--font-body)',
+    fontSize: 13,
+    color: 'var(--dls-navy)',
+    background: 'var(--dls-white)',
+    border: '1px solid var(--dls-hairline)',
+    padding: '10px 14px',
+    outline: 'none',
+    transition: 'border-color 0.15s',
+  }
+
+  return (
+    <div
+      style={{
+        background: 'var(--dls-white)',
+        border: '1px solid var(--dls-hairline)',
+        padding: '18px 24px',
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 12,
+        alignItems: 'center',
+      }}
+    >
+      {/* Texto libre */}
+      <input
+        type="text"
+        placeholder="Buscar por título o descripción…"
+        defaultValue={searchParams.get('q') ?? ''}
+        onChange={(e) => actualizar('q', e.target.value)}
+        style={{ ...inputStyle, flex: '1 1 220px', minWidth: 180 }}
+        onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--dls-champagne)')}
+        onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--dls-hairline)')}
+      />
+
+      {/* Área legal */}
+      <select
+        defaultValue={searchParams.get('area') ?? ''}
+        onChange={(e) => actualizar('area', e.target.value)}
+        style={{ ...inputStyle, cursor: 'pointer', flex: '0 1 200px' }}
+        onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--dls-champagne)')}
+        onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--dls-hairline)')}
+      >
+        <option value="">Todas las áreas</option>
+        {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+      </select>
+
+      {/* Material penal */}
+      <select
+        defaultValue={searchParams.get('penal') ?? ''}
+        onChange={(e) => actualizar('penal', e.target.value)}
+        style={{ ...inputStyle, cursor: 'pointer', flex: '0 1 170px' }}
+        onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--dls-champagne)')}
+        onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--dls-hairline)')}
+      >
+        <option value="">Cualquier materia</option>
+        <option value="penal">Solo material penal</option>
+        <option value="civil">Solo material civil</option>
+      </select>
+
+      {/* Fecha */}
+      <select
+        defaultValue={searchParams.get('fecha') ?? ''}
+        onChange={(e) => actualizar('fecha', e.target.value)}
+        style={{ ...inputStyle, cursor: 'pointer', flex: '0 1 160px' }}
+        onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--dls-champagne)')}
+        onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--dls-hairline)')}
+      >
+        <option value="">Cualquier fecha</option>
+        <option value="hoy">Hoy</option>
+        <option value="semana">Esta semana</option>
+        <option value="mes">Este mes</option>
+      </select>
+
+      {/* Limpiar */}
+      {(searchParams.get('q') || searchParams.get('area') || searchParams.get('penal') || searchParams.get('fecha')) && (
+        <button
+          onClick={() => router.push('/dashboard/abogado/explorar')}
+          style={{
+            fontFamily: 'var(--font-body)',
+            fontSize: 11,
+            letterSpacing: '0.06em',
+            color: 'var(--dls-taupe)',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            textDecoration: 'underline',
+            padding: '4px 0',
+          }}
+        >
+          Limpiar filtros
+        </button>
+      )}
+    </div>
+  )
+}
+
+export function FiltrosPool() {
+  return (
+    <Suspense fallback={<div style={{ height: 56, background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', animation: 'champagnePulse 1.5s ease infinite' }} />}>
+      <FiltrosInner />
+    </Suspense>
+  )
+}
+===== ./components/pool/PoolExplorar.tsx =====
+'use client'
+
+import { useState, useMemo, useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import { PostularButton } from '@/components/pool/PostularButton'
+import { EstadoBadge } from '@/components/casos/EstadoBadge'
+import type { EstadoCaso } from '@/lib/types/caso'
+
+// ── Tipos ─────────────────────────────────────────────────────────────────────
+interface Documento {
+  id: string
+  nombre: string
+  url: string
+  tipo: string
+  created_at: string
+}
+
+interface Caso {
+  id: string
+  titulo: string
+  descripcion: string
+  area_legal: string
+  estado: string
+  created_at: string
+  postulaciones_count: number | null
+  nombre_contacto: string | null
+  email_contacto: string | null
+  telefono_contacto: string | null
+  profiles: { nombre: string; apellido: string } | { nombre: string; apellido: string }[] | null
+}
+
+interface Props {
+  casos: Caso[]
+  casosPostulados: Set<string>
+  puntosRestantes: number
+  postulacionesHoy: number
+  noVerificado: boolean
+  documentosPorCaso: Record<string, Documento[]>
+}
+
+// ── Áreas para filtros ────────────────────────────────────────────────────────
+const AREAS = [
+  'Derecho de Familia', 'Derecho Laboral', 'Derecho Civil',
+  'Derecho Penal', 'Derecho Comercial', 'Derecho Inmobiliario',
+  'Derecho Tributario', 'Otro',
+]
+
+// ── Íconos SVG ────────────────────────────────────────────────────────────────
+const IconSearch = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+    <circle cx="6" cy="6" r="4" /><line x1="9.5" y1="9.5" x2="13" y2="13" />
+  </svg>
+)
+const IconX = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <line x1="3" y1="3" x2="13" y2="13" /><line x1="13" y1="3" x2="3" y2="13" />
+  </svg>
+)
+const IconDownload = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M7 2v7M4.5 6.5L7 9l2.5-2.5"/><path d="M2 11h10"/>
+  </svg>
+)
+const IconExternalLink = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5"/>
+  </svg>
+)
+
+// ── Icono por tipo de documento ───────────────────────────────────────────────
+function DocIcon({ tipo }: { tipo: string }) {
+  const t = tipo?.toUpperCase()
+  if (t === 'PDF')
+    return (
+      <div style={{ width: 36, height: 44, background: '#fee2e2', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative' }}>
+        <div style={{ position: 'absolute', top: 0, right: 0, width: 0, height: 0, borderLeft: '8px solid #fca5a5', borderTop: '8px solid transparent' }} />
+        <span style={{ fontFamily: 'var(--font-body)', fontSize: 9, fontWeight: 800, color: '#dc2626', letterSpacing: '0.05em' }}>PDF</span>
+      </div>
+    )
+  if (t === 'WORD' || t === 'DOC')
+    return (
+      <div style={{ width: 36, height: 44, background: '#dbeafe', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative' }}>
+        <div style={{ position: 'absolute', top: 0, right: 0, width: 0, height: 0, borderLeft: '8px solid #93c5fd', borderTop: '8px solid transparent' }} />
+        <span style={{ fontFamily: 'var(--font-body)', fontSize: 9, fontWeight: 800, color: '#1d4ed8', letterSpacing: '0.05em' }}>DOC</span>
+      </div>
+    )
+  if (t === 'EXCEL' || t === 'XLS')
+    return (
+      <div style={{ width: 36, height: 44, background: '#dcfce7', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative' }}>
+        <div style={{ position: 'absolute', top: 0, right: 0, width: 0, height: 0, borderLeft: '8px solid #86efac', borderTop: '8px solid transparent' }} />
+        <span style={{ fontFamily: 'var(--font-body)', fontSize: 9, fontWeight: 800, color: '#15803d', letterSpacing: '0.05em' }}>XLS</span>
+      </div>
+    )
+  if (t === 'IMAGEN' || t === 'IMG')
+    return (
+      <div style={{ width: 36, height: 44, background: '#f3e8ff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative' }}>
+        <div style={{ position: 'absolute', top: 0, right: 0, width: 0, height: 0, borderLeft: '8px solid #d8b4fe', borderTop: '8px solid transparent' }} />
+        <svg width="16" height="14" viewBox="0 0 16 14" fill="none" stroke="#7c3aed" strokeWidth="1.5" strokeLinecap="round">
+          <rect x="1" y="1" width="14" height="12" rx="1"/><circle cx="5" cy="5" r="1.5"/><polyline points="1,10 5,6 8,9 11,7 15,10"/>
+        </svg>
+      </div>
+    )
+  return (
+    <div style={{ width: 36, height: 44, background: '#f1f5f9', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative' }}>
+      <div style={{ position: 'absolute', top: 0, right: 0, width: 0, height: 0, borderLeft: '8px solid #cbd5e1', borderTop: '8px solid transparent' }} />
+      <svg width="14" height="16" viewBox="0 0 14 16" fill="none" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round">
+        <path d="M2 1h7l3 3v11H2V1z"/><polyline points="9,1 9,4 12,4"/><line x1="4" y1="7" x2="10" y2="7"/><line x1="4" y1="10" x2="8" y2="10"/>
+      </svg>
+    </div>
+  )
+}
+
+// ── Modal de preview de documento ─────────────────────────────────────────────
+function DocPreviewModal({ doc, onClose }: { doc: Documento; onClose: () => void }) {
+  const tipo = doc.tipo?.toUpperCase()
+  const esImagen = tipo === 'IMAGEN' || tipo === 'IMG'
+  const esPDF = tipo === 'PDF'
+  const esOffice = tipo === 'WORD' || tipo === 'DOC' || tipo === 'EXCEL' || tipo === 'XLS'
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handler)
+    return () => {
+      document.body.style.overflow = ''
+      document.removeEventListener('keydown', handler)
+    }
+  }, [onClose])
+
+  const nombreCorto = doc.nombre.length > 50 ? doc.nombre.slice(0, 47) + '…' : doc.nombre
+
+  return createPortal(
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(8,18,42,0.85)', backdropFilter: 'blur(4px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+    >
+      {/* Modal */}
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', width: '100%', maxWidth: 900, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 32px 80px rgba(8,18,42,0.5)' }}>
+        {/* Header */}
+        <div style={{ background: '#0f1e3a', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+          <DocIcon tipo={doc.tipo} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: '#faf4ed', fontWeight: 600, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombreCorto}</p>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 10, color: 'rgba(250,244,237,0.45)', margin: 0, letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 2 }}>{doc.tipo}</p>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
+            <a href={doc.url} download={doc.nombre} target="_blank" rel="noopener noreferrer"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#c9a35a', background: 'rgba(201,163,90,0.12)', border: '1px solid rgba(201,163,90,0.3)', padding: '7px 14px', textDecoration: 'none' }}>
+              <IconDownload /> Descargar
+            </a>
+            <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(250,244,237,0.4)', padding: 4, lineHeight: 0 }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#faf4ed')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(250,244,237,0.4)')}>
+              <IconX />
+            </button>
+          </div>
+        </div>
+
+        {/* Contenido de preview */}
+        <div style={{ flex: 1, overflow: 'hidden', minHeight: 0, background: '#f8f8f8' }}>
+          {esImagen && (
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, boxSizing: 'border-box' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={doc.url} alt={doc.nombre} style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', boxShadow: '0 4px 24px rgba(0,0,0,0.15)' }} />
+            </div>
+          )}
+          {esPDF && (
+            <iframe src={doc.url} title={doc.nombre} style={{ width: '100%', height: '70vh', border: 'none' }} />
+          )}
+          {esOffice && (
+            <iframe
+              src={`https://docs.google.com/viewer?url=${encodeURIComponent(doc.url)}&embedded=true`}
+              title={doc.nombre}
+              style={{ width: '100%', height: '70vh', border: 'none' }}
+            />
+          )}
+          {!esImagen && !esPDF && !esOffice && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '50vh', gap: 16 }}>
+              <DocIcon tipo={doc.tipo} />
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: '#64748b' }}>Vista previa no disponible para este tipo de archivo.</p>
+              <a href={doc.url} download={doc.nombre} target="_blank" rel="noopener noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-body)', fontSize: 12, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#0f1e3a', background: '#f1f5f9', border: '1px solid #e0d8d0', padding: '10px 20px', textDecoration: 'none' }}>
+                <IconDownload /> Descargar archivo
+              </a>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Hint cerrar */}
+      <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'rgba(250,244,237,0.3)', marginTop: 14, letterSpacing: '0.06em' }}>
+        ESC o clic fuera para cerrar
+      </p>
+    </div>,
+    document.body
+  )
+}
+
+// ── Componente principal ──────────────────────────────────────────────────────
+export function PoolExplorar({ casos, casosPostulados, puntosRestantes, postulacionesHoy, noVerificado, documentosPorCaso }: Props) {
+  const [seleccionado, setSeleccionado] = useState<Caso | null>(casos[0] ?? null)
+  const [q, setQ] = useState('')
+  const [area, setArea] = useState('')
+  const [fecha, setFecha] = useState('')
+  const [docPreview, setDocPreview] = useState<Documento | null>(null)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => { setMounted(true) }, [])
+
+  const resultado = useMemo(() => {
+    return casos.filter(c => {
+      if (area && c.area_legal !== area) return false
+      if (q) {
+        const query = q.toLowerCase()
+        if (!c.titulo.toLowerCase().includes(query) && !c.descripcion.toLowerCase().includes(query)) return false
+      }
+      if (fecha) {
+        const diff = Date.now() - new Date(c.created_at).getTime()
+        if (fecha === 'hoy'    && diff > 86400000) return false
+        if (fecha === 'semana' && diff > 7 * 86400000) return false
+        if (fecha === 'mes'    && diff > 30 * 86400000) return false
+      }
+      return true
+    })
+  }, [casos, q, area, fecha])
+
+  const yaPostulo = seleccionado ? casosPostulados.has(seleccionado.id) : false
+  const lleno = (seleccionado?.postulaciones_count ?? 0) >= 3
+  const clienteSel = seleccionado
+    ? (Array.isArray(seleccionado.profiles) ? seleccionado.profiles[0] : seleccionado.profiles)
+    : null
+  const docsSeleccionado = seleccionado ? (documentosPorCaso[seleccionado.id] ?? []) : []
+  const esAnonimo = seleccionado && !clienteSel && !!seleccionado.nombre_contacto
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 144px)', minHeight: 500 }}>
+
+      {/* Header de página */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexShrink: 0 }}>
+        <div>
+          <div className="eyebrow" style={{ marginBottom: 4 }}>Explorar casos</div>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 28, color: 'var(--dls-navy)', lineHeight: 1, margin: 0 }}>
+            Pool de casos
+          </h1>
+        </div>
+        <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div>
+            <div style={{ fontFamily: 'var(--font-body)', fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 3 }}>Puntos hoy</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+              <span style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22, color: puntosRestantes > 30 ? 'var(--dls-navy)' : puntosRestantes > 0 ? '#b45309' : '#dc2626' }}>{puntosRestantes}</span>
+              <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-taupe)' }}>/ 100</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ width: 100, height: 3, background: 'var(--dls-hairline)', position: 'relative' }}>
+              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${puntosRestantes}%`, background: puntosRestantes > 30 ? 'var(--dls-champagne)' : puntosRestantes > 0 ? '#f59e0b' : '#ef4444', transition: 'width 0.3s' }} />
+            </div>
+            <div style={{ fontFamily: 'var(--font-body)', fontSize: 10, color: 'var(--dls-taupe)' }}>{10 - postulacionesHoy} postulaciones restantes</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Layout dos columnas */}
+      <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', flex: 1, minHeight: 0, border: '1px solid var(--dls-hairline)', background: 'var(--dls-white)' }}>
+
+        {/* ══ IZQUIERDA ══ */}
+        <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--dls-hairline)', minHeight: 0 }}>
+          {/* Filtros */}
+          <div style={{ padding: '14px', borderBottom: '1px solid var(--dls-hairline)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--dls-taupe)', pointerEvents: 'none' }}><IconSearch /></span>
+              <input type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar por título o descripción…"
+                style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-navy)', background: 'var(--dls-cream)', border: '1px solid var(--dls-hairline)', padding: '8px 10px 8px 30px', outline: 'none' }}
+                onFocus={e => (e.currentTarget.style.borderColor = 'var(--dls-champagne)')}
+                onBlur={e => (e.currentTarget.style.borderColor = 'var(--dls-hairline)')} />
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[
+                { value: area, onChange: setArea, options: [['', 'Todas las áreas'], ...AREAS.map(a => [a, a])] },
+                { value: fecha, onChange: setFecha, options: [['', 'Cualquier fecha'], ['hoy', 'Hoy'], ['semana', 'Esta semana'], ['mes', 'Este mes']] },
+              ].map((sel, i) => (
+                <select key={i} value={sel.value} onChange={e => sel.onChange(e.target.value)}
+                  style={{ flex: 1, fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-navy)', background: 'var(--dls-cream)', border: '1px solid var(--dls-hairline)', padding: '6px 6px', outline: 'none', cursor: 'pointer' }}>
+                  {sel.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              ))}
+            </div>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-taupe)', margin: 0 }}>
+              {resultado.length} caso{resultado.length !== 1 ? 's' : ''} disponible{resultado.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+
+          {/* Lista scrollable */}
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {resultado.length === 0 ? (
+              <div style={{ padding: '40px 20px', textAlign: 'center' }}>
+                <p style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 16, color: 'var(--dls-taupe)', opacity: 0.5 }}>Sin resultados</p>
+              </div>
+            ) : resultado.map(caso => {
+              const activo = seleccionado?.id === caso.id
+              const postulado = casosPostulados.has(caso.id)
+              const nDocs = (documentosPorCaso[caso.id] ?? []).length
+              return (
+                <button key={caso.id} type="button" onClick={() => setSeleccionado(caso)}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '14px 16px',
+                    cursor: 'pointer',
+                    border: 'none',
+                    borderBottom: '1px solid var(--dls-hairline)',
+                    borderLeft: activo ? '3px solid var(--dls-champagne)' : '3px solid transparent',
+                    background: activo ? 'rgba(201,163,90,0.06)' : 'transparent',
+                    transition: 'background 0.12s',
+                    position: 'relative'
+                    }}
+                  onMouseEnter={e => { if (!activo) e.currentTarget.style.background = 'rgba(15,30,58,0.03)' }}
+                  onMouseLeave={e => { if (!activo) e.currentTarget.style.background = activo ? 'rgba(201,163,90,0.06)' : 'transparent' }}>
+                  <p style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 13, color: 'var(--dls-navy)', margin: '0 0 5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: postulado ? 70 : 0 }}>
+                    {caso.titulo}
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 9, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--dls-champagne)', background: 'rgba(201,163,90,0.1)', padding: '2px 6px' }}>{caso.area_legal}</span>
+                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-taupe)' }}>{new Date(caso.created_at).toLocaleDateString('es-CL')}</span>
+                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: (caso.postulaciones_count ?? 0) >= 2 ? '#b45309' : 'var(--dls-taupe)' }}>{caso.postulaciones_count ?? 0}/3</span>
+                    {nDocs > 0 && <span style={{ fontFamily: 'var(--font-body)', fontSize: 10, color: '#7c3aed' }}>📎 {nDocs}</span>}
+                  </div>
+                  {postulado && (
+                    <span style={{ position: 'absolute', top: 12, right: 12, fontFamily: 'var(--font-body)', fontSize: 9, letterSpacing: '0.05em', textTransform: 'uppercase', color: '#059669', background: 'rgba(5,150,105,0.1)', padding: '2px 6px' }}>✓ Postulado</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* ══ DERECHA ══ */}
+        {seleccionado ? (
+          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+
+            {/* Cabecera fija con botón postular */}
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--dls-hairline)', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-champagne)', background: 'rgba(201,163,90,0.1)', padding: '3px 9px' }}>{seleccionado.area_legal}</span>
+                    <EstadoBadge estado={seleccionado.estado as EstadoCaso} />
+                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-taupe)' }}>{seleccionado.postulaciones_count ?? 0}/3 postulaciones</span>
+                  </div>
+                  <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22, color: 'var(--dls-navy)', lineHeight: 1.2, margin: 0 }}>{seleccionado.titulo}</h2>
+                </div>
+                <div style={{ flexShrink: 0 }}>
+                  {noVerificado
+                    ? <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-taupe)' }}>Verificación pendiente</span>
+                    : <PostularButton casoId={seleccionado.id} yaPostuló={yaPostulo} puntosRestantes={puntosRestantes} casosLlenos={lleno} />
+                  }
+                </div>
+              </div>
+            </div>
+
+            {/* Cuerpo scrollable */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 22 }}>
+
+              {/* Descripción */}
+              <div>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 8 }}>Descripción</div>
+                <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: 1.8, color: 'var(--dls-navy-mid)', margin: 0 }}>{seleccionado.descripcion}</p>
+              </div>
+
+              {/* Grid metadatos */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, padding: '18px 0', borderTop: '1px solid var(--dls-hairline)', borderBottom: '1px solid var(--dls-hairline)' }}>
+                <div>
+                  <p style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 4 }}>Fecha</p>
+                  <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--dls-navy)', fontWeight: 500 }}>
+                    {new Date(seleccionado.created_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </p>
+                </div>
+                <div>
+                  <p style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 4 }}>Postulaciones</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 60, height: 3, background: 'var(--dls-hairline)', position: 'relative' }}>
+                      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${((seleccionado.postulaciones_count ?? 0) / 3) * 100}%`, background: (seleccionado.postulaciones_count ?? 0) >= 2 ? '#f59e0b' : 'var(--dls-champagne)' }} />
+                    </div>
+                    <span style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 18, color: 'var(--dls-navy)' }}>
+                      {seleccionado.postulaciones_count ?? 0}<span style={{ fontSize: 12, color: 'var(--dls-taupe)', fontWeight: 400 }}>/3</span>
+                    </span>
+                  </div>
+                </div>
+                {clienteSel && (
+                  <div>
+                    <p style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 4 }}>Cliente</p>
+                    <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--dls-navy)', fontWeight: 500 }}>{clienteSel.nombre} {clienteSel.apellido}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Datos de contacto anónimo ─────────────────────────── */}
+              {esAnonimo && (
+                <div style={{ background: 'rgba(201,163,90,0.05)', border: '1px solid rgba(201,163,90,0.2)', padding: '16px 20px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                    <div style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-champagne)' }}>Contacto</div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    {seleccionado.nombre_contacto && (
+                      <div>
+                        <p style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 3 }}>Nombre</p>
+                        <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-navy)', fontWeight: 500, margin: 0 }}>{seleccionado.nombre_contacto}</p>
+                      </div>
+                    )}
+                    {seleccionado.email_contacto && (
+                      <div>
+                        <p style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 3 }}>Email</p>
+                        <a href={`mailto:${seleccionado.email_contacto}`} style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-navy)', textDecoration: 'none', borderBottom: '1px solid rgba(15,30,58,0.2)' }}>{seleccionado.email_contacto}</a>
+                      </div>
+                    )}
+                    {seleccionado.telefono_contacto && (
+                      <div>
+                        <p style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 3 }}>Teléfono</p>
+                        <a href={`tel:${seleccionado.telefono_contacto}`} style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-navy)', textDecoration: 'none' }}>{seleccionado.telefono_contacto}</a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Documentos ──────────────────────────────────────────── */}
+              {docsSeleccionado.length > 0 && (
+                <div>
+                  <div style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 12 }}>
+                    Documentos adjuntos ({docsSeleccionado.length})
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
+                    {docsSeleccionado.map(doc => (
+                      <button
+                        key={doc.id}
+                        type="button"
+                        onClick={() => setDocPreview(doc)}
+                        style={{ textAlign: 'left', background: 'var(--dls-cream)', border: '1px solid var(--dls-hairline)', padding: '12px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 10, transition: 'border-color 0.15s', position: 'relative', overflow: 'hidden' }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--dls-champagne)'; e.currentTarget.style.background = 'rgba(201,163,90,0.04)' }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--dls-hairline)'; e.currentTarget.style.background = 'var(--dls-cream)' }}
+                      >
+                        <DocIcon tipo={doc.tipo} />
+                        <div style={{ minWidth: 0 }}>
+                          <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-navy)', fontWeight: 600, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {doc.nombre}
+                          </p>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span style={{ fontFamily: 'var(--font-body)', fontSize: 9, color: 'var(--dls-taupe)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>{doc.tipo}</span>
+                            <span style={{ color: 'var(--dls-champagne)', opacity: 0.7 }}><IconExternalLink /></span>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Aviso de puntos */}
+              {!yaPostulo && !lleno && puntosRestantes > 0 && (
+                <div style={{ background: 'rgba(201,163,90,0.06)', border: '1px solid rgba(201,163,90,0.2)', padding: '12px 16px' }}>
+                  <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-navy)', margin: 0 }}>
+                    Postular costará <strong>10 puntos</strong>. Te quedarán <strong>{puntosRestantes - 10} puntos</strong> disponibles hoy.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, color: 'var(--dls-taupe)' }}>
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" opacity="0.25">
+              <rect x="6" y="6" width="28" height="28" rx="2"/><line x1="12" y1="14" x2="28" y2="14"/><line x1="12" y1="20" x2="22" y2="20"/><line x1="12" y1="26" x2="20" y2="26"/>
+            </svg>
+            <p style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 16, margin: 0, opacity: 0.4 }}>Selecciona un caso</p>
+          </div>
+        )}
+      </div>
+
+      {/* Modal de preview de documento — via Portal */}
+      {mounted && docPreview && (
+        <DocPreviewModal doc={docPreview} onClose={() => setDocPreview(null)} />
+      )}
+    </div>
+  )
+}
+===== ./components/pool/PostularButton.tsx =====
+// components/pool/PostularButton.tsx
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+
+interface Props {
+  casoId: string
+  yaPostuló: boolean
+  puntosRestantes: number
+  casosLlenos: boolean // si el caso ya tiene 3 postulaciones
+}
+
+export function PostularButton({ casoId, yaPostuló, puntosRestantes, casosLlenos }: Props) {
+  const router = useRouter()
+  const [abierto, setAbierto] = useState(false)
+  const [mensaje, setMensaje] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [exito, setExito] = useState(false)
+
+  const sinPuntos = puntosRestantes <= 0
+  const bloqueado = yaPostuló || sinPuntos || casosLlenos
+
+  async function handlePostular() {
+    setLoading(true)
+    setError(null)
+
+    const res = await fetch('/api/pool/postular', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caso_id: casoId, mensaje }),
+    })
+
+    const data = await res.json()
+    setLoading(false)
+
+    if (!res.ok) {
+      setError(data.error ?? 'Error al postular')
+      return
+    }
+
+    setExito(true)
+    setAbierto(false)
+    router.refresh()
+  }
+
+  if (exito || yaPostuló) {
+    return (
+      <div
+        style={{
+          fontFamily: 'var(--font-body)',
+          fontSize: 11,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          color: '#059669',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+        }}
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <polyline points="1.5,6 4.5,9 10.5,3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        Postulado
+      </div>
+    )
+  }
+
+  if (casosLlenos) {
+    return (
+      <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-taupe)', letterSpacing: '0.04em' }}>
+        Cupo lleno
+      </span>
+    )
+  }
+
+  if (sinPuntos) {
+    return (
+      <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-taupe)', letterSpacing: '0.04em' }}>
+        Sin puntos hoy
+      </span>
+    )
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => setAbierto(true)}
+        style={{
+          fontFamily: 'var(--font-body)',
+          fontSize: 11,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          color: 'var(--dls-champagne)',
+          background: 'rgba(201,163,90,0.1)',
+          border: '1px solid rgba(201,163,90,0.3)',
+          padding: '8px 16px',
+          cursor: 'pointer',
+          transition: 'background 0.15s',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(201,163,90,0.18)')}
+        onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(201,163,90,0.1)')}
+      >
+        Postular →
+      </button>
+
+      {/* Modal de confirmación */}
+      {abierto && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 100,
+            background: 'rgba(15,30,58,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 24,
+          }}
+          onClick={() => setAbierto(false)}
+        >
+          <div
+            style={{
+              background: 'var(--dls-white)',
+              padding: '36px',
+              maxWidth: 480,
+              width: '100%',
+              boxShadow: '0 24px 80px -16px rgba(15,30,58,0.3)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="eyebrow" style={{ marginBottom: 12, color: 'var(--dls-navy)' }}>Confirmar postulación</div>
+            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--dls-navy)', marginBottom: 8 }}>
+              ¿Postularte a este caso?
+            </h3>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-taupe)', marginBottom: 20 }}>
+              Usarás 10 puntos. Te quedan {puntosRestantes} puntos hoy.
+            </p>
+
+            <textarea
+              value={mensaje}
+              onChange={(e) => setMensaje(e.target.value)}
+              placeholder="Mensaje opcional para el cliente (¿por qué eres el indicado?)…"
+              rows={3}
+              style={{
+                width: '100%',
+                fontFamily: 'var(--font-body)',
+                fontSize: 13,
+                color: 'var(--dls-navy)',
+                border: '1px solid var(--dls-hairline)',
+                padding: '10px 14px',
+                resize: 'vertical',
+                outline: 'none',
+                boxSizing: 'border-box',
+                marginBottom: 16,
+              }}
+            />
+
+            {error && (
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: '#dc2626', marginBottom: 14 }}>{error}</p>
+            )}
+
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button
+                onClick={handlePostular}
+                disabled={loading}
+                className="btn-primary"
+                style={{ flex: 1, justifyContent: 'center', padding: '12px 0', opacity: loading ? 0.7 : 1 }}
+              >
+                <span>{loading ? 'Postulando…' : 'Confirmar'}</span>
+              </button>
+              <button
+                onClick={() => setAbierto(false)}
+                style={{
+                  flex: 1, fontFamily: 'var(--font-body)', fontSize: 12,
+                  border: '1px solid var(--dls-hairline)', background: 'none',
+                  cursor: 'pointer', color: 'var(--dls-taupe)',
+                  letterSpacing: '0.06em', textTransform: 'uppercase',
+                }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
 }
 ===== ./components/shared/BackButton.tsx =====
 'use client'
@@ -7538,6 +10648,7 @@ function getResend() {
   return new Resend(key)
 }
 
+// ─── Email de asignación al abogado ─────────────────────────────────────────
 export async function enviarEmailAsignacion({
   emailAbogado,
   nombreAbogado,
@@ -7556,39 +10667,40 @@ export async function enviarEmailAsignacion({
     to: emailAbogado,
     subject: `Nuevo caso asignado: ${tituloCaso}`,
     html: `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-        <h2 style="color:#1e40af">Marketplace Legal</h2>
-
-        <p>Hola <strong>${nombreAbogado}</strong>,</p>
-
-        <p>Se te ha asignado un nuevo caso:</p>
-
-        <div style="background:#f1f5f9;padding:16px;border-radius:8px;margin:16px 0">
-          <strong>${tituloCaso}</strong>
+      <div style="font-family:Georgia,serif;max-width:600px;margin:0 auto;background:#faf4ed;padding:0">
+        <div style="background:#0f1e3a;padding:32px 40px">
+          <div style="font-family:Georgia,serif;font-size:20px;color:#faf4ed;font-weight:500">
+            Marketplace <em style="color:#c9a35a">&</em> Legal
+          </div>
+          <div style="font-size:10px;color:rgba(201,163,90,0.6);letter-spacing:0.1em;margin-top:4px;text-transform:uppercase">Chile · Verified</div>
         </div>
 
-        <a
-          href="${APP_URL}/dashboard/abogado/casos/${casoId}"
-          style="
-            background:#1e40af;
-            color:white;
-            padding:12px 24px;
-            border-radius:6px;
-            text-decoration:none;
-            display:inline-block
-          "
-        >
-          Ver caso
-        </a>
+        <div style="padding:40px">
+          <p style="font-size:14px;color:#2a3a5c;margin-bottom:8px">Hola, <strong>${nombreAbogado}</strong></p>
+          <p style="font-size:14px;color:#a68f85;margin-bottom:28px">Se te ha asignado un nuevo caso en la plataforma.</p>
 
-        <p style="color:#64748b;font-size:12px;margin-top:32px">
-          Marketplace Legal — Proyecto Duoc UC
-        </p>
+          <div style="background:#0f1e3a;padding:24px 28px;margin-bottom:28px">
+            <div style="font-size:10px;color:rgba(201,163,90,0.7);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">Caso asignado</div>
+            <div style="font-family:Georgia,serif;font-size:20px;color:#faf4ed;font-weight:500">${tituloCaso}</div>
+          </div>
+
+          <a href="${APP_URL}/dashboard/abogado/casos/${casoId}"
+            style="display:inline-block;background:#c9a35a;color:#0f1e3a;padding:13px 28px;text-decoration:none;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase">
+            Ver caso →
+          </a>
+        </div>
+
+        <div style="padding:20px 40px;border-top:1px solid rgba(15,30,58,0.1)">
+          <p style="font-size:11px;color:#a68f85;letter-spacing:0.06em;text-transform:uppercase;margin:0">
+            Marketplace Legal — Proyecto Duoc UC
+          </p>
+        </div>
       </div>
     `,
   })
 }
 
+// ─── Email de nuevo mensaje ──────────────────────────────────────────────────
 export async function enviarEmailMensajeNuevo({
   emailDestinatario,
   nombreDestinatario,
@@ -7611,37 +10723,129 @@ export async function enviarEmailMensajeNuevo({
     to: emailDestinatario,
     subject: `Nuevo mensaje en: ${tituloCaso}`,
     html: `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-        <h2 style="color:#1e40af">Marketplace Legal</h2>
+      <div style="font-family:Georgia,serif;max-width:600px;margin:0 auto;background:#faf4ed;padding:0">
+        <div style="background:#0f1e3a;padding:32px 40px">
+          <div style="font-family:Georgia,serif;font-size:20px;color:#faf4ed;font-weight:500">
+            Marketplace <em style="color:#c9a35a">&</em> Legal
+          </div>
+        </div>
+        <div style="padding:40px">
+          <p style="font-size:14px;color:#2a3a5c;margin-bottom:8px">Hola, <strong>${nombreDestinatario}</strong></p>
+          <p style="font-size:14px;color:#a68f85;margin-bottom:28px">
+            <strong>${nombreRemitente}</strong> te ha enviado un mensaje en el caso <strong>${tituloCaso}</strong>.
+          </p>
+          <a href="${APP_URL}/dashboard/${rol}/casos/${casoId}"
+            style="display:inline-block;background:#c9a35a;color:#0f1e3a;padding:13px 28px;text-decoration:none;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase">
+            Ver mensaje →
+          </a>
+        </div>
+        <div style="padding:20px 40px;border-top:1px solid rgba(15,30,58,0.1)">
+          <p style="font-size:11px;color:#a68f85;letter-spacing:0.06em;text-transform:uppercase;margin:0">
+            Marketplace Legal — Proyecto Duoc UC
+          </p>
+        </div>
+      </div>
+    `,
+  })
+}
 
-        <p>Hola <strong>${nombreDestinatario}</strong>,</p>
+// ─── Email con código de seguimiento (caso anónimo) ─────────────────────────
+export async function enviarCodigoSeguimiento({
+  email,
+  nombre,
+  tituloCaso,
+  areaCaso,
+  codigo,
+  docsCount,
+}: {
+  email: string
+  nombre: string
+  tituloCaso: string
+  areaCaso: string
+  codigo: string
+  docsCount: number
+}) {
+  const resend = getResend()
 
-        <p>
-          <strong>${nombreRemitente}</strong>
-          te ha enviado un mensaje en el caso:
-        </p>
+  return resend.emails.send({
+    from: FROM,
+    to: email,
+    subject: `Tu código de seguimiento: ${codigo} — Marketplace Legal`,
+    html: `
+      <div style="font-family:Georgia,serif;max-width:600px;margin:0 auto;background:#faf4ed;padding:0">
 
-        <div style="background:#f1f5f9;padding:16px;border-radius:8px;margin:16px 0">
-          <strong>${tituloCaso}</strong>
+        <!-- Header -->
+        <div style="background:#0f1e3a;padding:32px 40px">
+          <div style="font-family:Georgia,serif;font-size:20px;color:#faf4ed;font-weight:500">
+            Marketplace <em style="color:#c9a35a">&</em> Legal
+          </div>
+          <div style="font-size:10px;color:rgba(201,163,90,0.6);letter-spacing:0.1em;margin-top:4px;text-transform:uppercase">Chile · Verified</div>
         </div>
 
-        <a
-          href="${APP_URL}/dashboard/${rol}/casos/${casoId}"
-          style="
-            background:#1e40af;
-            color:white;
-            padding:12px 24px;
-            border-radius:6px;
-            text-decoration:none;
-            display:inline-block
-          "
-        >
-          Ver mensaje
-        </a>
+        <!-- Body -->
+        <div style="padding:40px">
+          <p style="font-size:14px;color:#2a3a5c;margin-bottom:6px">Hola, <strong>${nombre}</strong></p>
+          <p style="font-size:14px;color:#a68f85;margin-bottom:32px;line-height:1.7">
+            Tu caso ha sido recibido con éxito. A continuación encontrarás tu código de seguimiento — guárdalo en un lugar seguro.
+          </p>
 
-        <p style="color:#64748b;font-size:12px;margin-top:32px">
-          Marketplace Legal — Proyecto Duoc UC
-        </p>
+          <!-- Caso info -->
+          <div style="background:white;border:1px solid rgba(15,30,58,0.1);padding:20px 24px;margin-bottom:28px">
+            <div style="font-size:10px;color:#a68f85;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px">Caso registrado</div>
+            <div style="font-family:Georgia,serif;font-size:18px;color:#0f1e3a;font-weight:500;margin-bottom:4px">${tituloCaso}</div>
+            <div style="font-size:12px;color:#c9a35a;letter-spacing:0.06em;text-transform:uppercase">${areaCaso}</div>
+            ${docsCount > 0 ? `<div style="font-size:12px;color:#a68f85;margin-top:8px">${docsCount} documento${docsCount !== 1 ? 's' : ''} adjunto${docsCount !== 1 ? 's' : ''}</div>` : ''}
+          </div>
+
+          <!-- Código -->
+          <div style="background:#0f1e3a;padding:28px 32px;margin-bottom:32px;text-align:center">
+            <div style="font-size:10px;color:rgba(201,163,90,0.7);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px">
+              Código de seguimiento
+            </div>
+            <div style="font-family:Courier New,monospace;font-size:36px;font-weight:700;color:#c9a35a;letter-spacing:0.15em">
+              ${codigo}
+            </div>
+          </div>
+
+          <!-- Instrucciones -->
+          <div style="margin-bottom:32px">
+            <p style="font-size:13px;font-weight:700;color:#0f1e3a;margin-bottom:12px">¿Qué sigue?</p>
+            <div style="display:flex;gap:12px;margin-bottom:10px">
+              <span style="font-family:Georgia,serif;color:#c9a35a;font-size:16px;font-weight:500;flex-shrink:0">1.</span>
+              <p style="font-size:13px;color:#a68f85;line-height:1.6;margin:0">
+                <strong style="color:#0f1e3a">Vinculación automática:</strong> Si creas una cuenta con este email (<em>${email}</em>), tu caso se vinculará automáticamente a tu perfil.
+              </p>
+            </div>
+            <div style="display:flex;gap:12px;margin-bottom:10px">
+              <span style="font-family:Georgia,serif;color:#c9a35a;font-size:16px;font-weight:500;flex-shrink:0">2.</span>
+              <p style="font-size:13px;color:#a68f85;line-height:1.6;margin:0">
+                <strong style="color:#0f1e3a">Vinculación manual:</strong> Si ya tienes cuenta o usas otro email, ingresa el código desde tu panel de cliente.
+              </p>
+            </div>
+            <div style="display:flex;gap:12px">
+              <span style="font-family:Georgia,serif;color:#c9a35a;font-size:16px;font-weight:500;flex-shrink:0">3.</span>
+              <p style="font-size:13px;color:#a68f85;line-height:1.6;margin:0">
+                Un abogado revisará tu caso y se pondrá en contacto contigo a la brevedad.
+              </p>
+            </div>
+          </div>
+
+          <!-- CTA -->
+          <a href="${APP_URL}/registro?email=${encodeURIComponent(email)}"
+            style="display:inline-block;background:#c9a35a;color:#0f1e3a;padding:13px 28px;text-decoration:none;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase">
+            Crear cuenta y ver mi caso →
+          </a>
+        </div>
+
+        <!-- Footer -->
+        <div style="padding:20px 40px;border-top:1px solid rgba(15,30,58,0.1)">
+          <p style="font-size:11px;color:#a68f85;letter-spacing:0.06em;text-transform:uppercase;margin:0">
+            Marketplace Legal · Proyecto Duoc UC · Chile
+          </p>
+          <p style="font-size:11px;color:rgba(166,143,133,0.6);margin-top:4px">
+            Si no enviaste este caso, puedes ignorar este email.
+          </p>
+        </div>
       </div>
     `,
   })

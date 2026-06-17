@@ -1,7 +1,7 @@
 'use client'
-
 import { useState, useMemo, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import Link from 'next/link'
 import { PostularButton } from '@/components/pool/PostularButton'
 import { EstadoBadge } from '@/components/casos/EstadoBadge'
 import type { EstadoCaso } from '@/lib/types/caso'
@@ -14,7 +14,6 @@ interface Documento {
   tipo: string
   created_at: string
 }
-
 interface Caso {
   id: string
   titulo: string
@@ -28,7 +27,22 @@ interface Caso {
   telefono_contacto: string | null
   profiles: { nombre: string; apellido: string } | { nombre: string; apellido: string }[] | null
 }
-
+// ── NUEVO ─────────────────────────────────────────────────────────────────────
+interface MiPostulacion {
+  id: string
+  caso_id: string
+  mensaje: string | null
+  estado: string
+  created_at: string
+  caso: {
+    id: string
+    titulo: string
+    area_legal: string
+    estado: string
+    abogado_id: string | null
+  } | null
+}
+// ─────────────────────────────────────────────────────────────────────────────
 interface Props {
   casos: Caso[]
   casosPostulados: Set<string>
@@ -36,6 +50,7 @@ interface Props {
   postulacionesHoy: number
   noVerificado: boolean
   documentosPorCaso: Record<string, Documento[]>
+  misPostulaciones: MiPostulacion[]  // ← NUEVO
 }
 
 // ── Áreas para filtros ────────────────────────────────────────────────────────
@@ -116,7 +131,6 @@ function DocPreviewModal({ doc, onClose }: { doc: Documento; onClose: () => void
   const esImagen = tipo === 'IMAGEN' || tipo === 'IMG'
   const esPDF = tipo === 'PDF'
   const esOffice = tipo === 'WORD' || tipo === 'DOC' || tipo === 'EXCEL' || tipo === 'XLS'
-
   useEffect(() => {
     document.body.style.overflow = 'hidden'
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -126,17 +140,13 @@ function DocPreviewModal({ doc, onClose }: { doc: Documento; onClose: () => void
       document.removeEventListener('keydown', handler)
     }
   }, [onClose])
-
   const nombreCorto = doc.nombre.length > 50 ? doc.nombre.slice(0, 47) + '…' : doc.nombre
-
   return createPortal(
     <div
       onClick={onClose}
       style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(8,18,42,0.85)', backdropFilter: 'blur(4px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}
     >
-      {/* Modal */}
       <div onClick={e => e.stopPropagation()} style={{ background: '#fff', width: '100%', maxWidth: 900, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 32px 80px rgba(8,18,42,0.5)' }}>
-        {/* Header */}
         <div style={{ background: '#0f1e3a', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
           <DocIcon tipo={doc.tipo} />
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -155,8 +165,6 @@ function DocPreviewModal({ doc, onClose }: { doc: Documento; onClose: () => void
             </button>
           </div>
         </div>
-
-        {/* Contenido de preview */}
         <div style={{ flex: 1, overflow: 'hidden', minHeight: 0, background: '#f8f8f8' }}>
           {esImagen && (
             <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, boxSizing: 'border-box' }}>
@@ -164,15 +172,9 @@ function DocPreviewModal({ doc, onClose }: { doc: Documento; onClose: () => void
               <img src={doc.url} alt={doc.nombre} style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', boxShadow: '0 4px 24px rgba(0,0,0,0.15)' }} />
             </div>
           )}
-          {esPDF && (
-            <iframe src={doc.url} title={doc.nombre} style={{ width: '100%', height: '70vh', border: 'none' }} />
-          )}
+          {esPDF && <iframe src={doc.url} title={doc.nombre} style={{ width: '100%', height: '70vh', border: 'none' }} />}
           {esOffice && (
-            <iframe
-              src={`https://docs.google.com/viewer?url=${encodeURIComponent(doc.url)}&embedded=true`}
-              title={doc.nombre}
-              style={{ width: '100%', height: '70vh', border: 'none' }}
-            />
+            <iframe src={`https://docs.google.com/viewer?url=${encodeURIComponent(doc.url)}&embedded=true`} title={doc.nombre} style={{ width: '100%', height: '70vh', border: 'none' }} />
           )}
           {!esImagen && !esPDF && !esOffice && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '50vh', gap: 16 }}>
@@ -186,8 +188,6 @@ function DocPreviewModal({ doc, onClose }: { doc: Documento; onClose: () => void
           )}
         </div>
       </div>
-
-      {/* Hint cerrar */}
       <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'rgba(250,244,237,0.3)', marginTop: 14, letterSpacing: '0.06em' }}>
         ESC o clic fuera para cerrar
       </p>
@@ -197,14 +197,14 @@ function DocPreviewModal({ doc, onClose }: { doc: Documento; onClose: () => void
 }
 
 // ── Componente principal ──────────────────────────────────────────────────────
-export function PoolExplorar({ casos, casosPostulados, puntosRestantes, postulacionesHoy, noVerificado, documentosPorCaso }: Props) {
+export function PoolExplorar({ casos, casosPostulados, puntosRestantes, postulacionesHoy, noVerificado, documentosPorCaso, misPostulaciones }: Props) {
+  const [tab, setTab] = useState<'pool' | 'mis'>('pool')          // ← NUEVO
   const [seleccionado, setSeleccionado] = useState<Caso | null>(casos[0] ?? null)
   const [q, setQ] = useState('')
   const [area, setArea] = useState('')
   const [fecha, setFecha] = useState('')
   const [docPreview, setDocPreview] = useState<Documento | null>(null)
   const [mounted, setMounted] = useState(false)
-
   useEffect(() => { setMounted(true) }, [])
 
   const resultado = useMemo(() => {
@@ -232,9 +232,178 @@ export function PoolExplorar({ casos, casosPostulados, puntosRestantes, postulac
   const docsSeleccionado = seleccionado ? (documentosPorCaso[seleccionado.id] ?? []) : []
   const esAnonimo = seleccionado && !clienteSel && !!seleccionado.nombre_contacto
 
+  // ── Pestañas (compartidas por ambas vistas) ───────────────────────────────
+  const tabBar = (
+    <div style={{ display: 'flex', borderBottom: '2px solid var(--dls-hairline)', marginBottom: 20, flexShrink: 0 }}>
+      {([
+        { key: 'pool' as const, label: 'Pool de casos',     badge: resultado.length },
+        { key: 'mis'  as const, label: 'Mis postulaciones', badge: misPostulaciones.length },
+      ]).map(t => (
+        <button key={t.key} type="button" onClick={() => setTab(t.key)}
+          style={{
+            fontFamily: 'var(--font-body)', fontSize: 12, letterSpacing: '0.06em', textTransform: 'uppercase',
+            color: tab === t.key ? 'var(--dls-navy)' : 'var(--dls-taupe)',
+            fontWeight: tab === t.key ? 700 : 400,
+            background: 'none', border: 'none', cursor: 'pointer',
+            padding: '10px 20px 12px',
+            borderBottom: tab === t.key ? '2px solid var(--dls-navy)' : '2px solid transparent',
+            marginBottom: -2,
+            display: 'flex', alignItems: 'center', gap: 8,
+            transition: 'color 0.15s',
+          }}>
+          {t.label}
+          <span style={{
+            fontFamily: 'var(--font-body)', fontSize: 10, padding: '1px 7px', borderRadius: 20,
+            background: tab === t.key ? 'var(--dls-navy)' : 'var(--dls-hairline)',
+            color: tab === t.key ? 'var(--dls-champagne)' : 'var(--dls-taupe)',
+          }}>
+            {t.badge}
+          </span>
+        </button>
+      ))}
+    </div>
+  )
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // TAB: MIS POSTULACIONES
+  // ════════════════════════════════════════════════════════════════════════════
+  if (tab === 'mis') {
+    const aceptadas = misPostulaciones.filter(p => p.estado === 'aceptada').length
+    const pendientes = misPostulaciones.filter(p => p.estado === 'pendiente').length
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 144px)', minHeight: 500 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexShrink: 0 }}>
+          <div>
+            <div className="eyebrow" style={{ marginBottom: 4 }}>Explorar casos</div>
+            <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 28, color: 'var(--dls-navy)', lineHeight: 1, margin: 0 }}>
+              Mis postulaciones
+            </h1>
+          </div>
+          <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div>
+              <div style={{ fontFamily: 'var(--font-body)', fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 3 }}>Puntos hoy</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                <span style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22, color: puntosRestantes > 30 ? 'var(--dls-navy)' : puntosRestantes > 0 ? '#b45309' : '#dc2626' }}>{puntosRestantes}</span>
+                <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-taupe)' }}>/ 100</span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ width: 100, height: 3, background: 'var(--dls-hairline)', position: 'relative' }}>
+                <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${puntosRestantes}%`, background: puntosRestantes > 30 ? 'var(--dls-champagne)' : puntosRestantes > 0 ? '#f59e0b' : '#ef4444', transition: 'width 0.3s' }} />
+              </div>
+              <div style={{ fontFamily: 'var(--font-body)', fontSize: 10, color: 'var(--dls-taupe)' }}>{10 - postulacionesHoy} postulaciones restantes</div>
+            </div>
+          </div>
+        </div>
+
+        {tabBar}
+
+        {misPostulaciones.length === 0 ? (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 14, background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)' }}>
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" stroke="var(--dls-taupe)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" opacity="0.3">
+              <rect x="6" y="6" width="28" height="28" rx="2"/><line x1="12" y1="14" x2="28" y2="14"/><line x1="12" y1="20" x2="22" y2="20"/><line x1="12" y1="26" x2="20" y2="26"/>
+            </svg>
+            <p style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 18, color: 'var(--dls-taupe)', opacity: 0.5, margin: 0 }}>
+              Aún no has postulado a ningún caso
+            </p>
+            <button type="button" onClick={() => setTab('pool')}
+              style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--dls-champagne)', background: 'none', border: '1px solid rgba(201,163,90,0.3)', padding: '9px 20px', cursor: 'pointer' }}>
+              Explorar el pool →
+            </button>
+          </div>
+        ) : (
+          <div style={{ flex: 1, overflowY: 'auto', background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)' }}>
+            {/* Resumen */}
+            {(aceptadas > 0 || pendientes > 0) && (
+              <div style={{ display: 'flex', borderBottom: '1px solid var(--dls-hairline)' }}>
+                {aceptadas > 0 && (
+                  <div style={{ flex: 1, padding: '14px 24px', borderRight: '1px solid var(--dls-hairline)', background: 'rgba(5,150,105,0.04)' }}>
+                    <div style={{ fontFamily: 'var(--font-body)', fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#059669', marginBottom: 2 }}>Aceptadas</div>
+                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 26, color: 'var(--dls-navy)' }}>{aceptadas}</div>
+                  </div>
+                )}
+                {pendientes > 0 && (
+                  <div style={{ flex: 1, padding: '14px 24px', background: 'rgba(180,83,9,0.03)' }}>
+                    <div style={{ fontFamily: 'var(--font-body)', fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#b45309', marginBottom: 2 }}>En revisión</div>
+                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 26, color: 'var(--dls-navy)' }}>{pendientes}</div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Lista */}
+            {misPostulaciones.map(p => {
+              const esAceptadaAMi = p.estado === 'aceptada'
+              const colorBarra = p.estado === 'aceptada' ? '#059669' : p.estado === 'rechazada' ? '#dc2626' : '#f59e0b'
+              const badgeColor = p.estado === 'aceptada'
+                ? { color: '#059669', bg: 'rgba(5,150,105,0.1)', label: '✓ Aceptada' }
+                : p.estado === 'rechazada'
+                ? { color: '#dc2626', bg: 'rgba(220,38,38,0.08)', label: 'Rechazada' }
+                : { color: '#b45309', bg: 'rgba(180,83,9,0.08)', label: 'En revisión' }
+
+              return (
+                <div key={p.id} style={{ padding: '18px 24px', borderBottom: '1px solid var(--dls-hairline)', display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+                  {/* Barra lateral de color */}
+                  <div style={{ width: 3, alignSelf: 'stretch', flexShrink: 0, background: colorBarra, borderRadius: 2 }} />
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+                      <h3 style={{ fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 14, color: 'var(--dls-navy)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {p.caso?.titulo ?? 'Caso no disponible'}
+                      </h3>
+                      <span style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: badgeColor.color, background: badgeColor.bg, padding: '3px 9px', flexShrink: 0 }}>
+                        {badgeColor.label}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: p.mensaje ? 10 : 0 }}>
+                      {p.caso?.area_legal && (
+                        <span style={{ fontFamily: 'var(--font-body)', fontSize: 9, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--dls-champagne)', background: 'rgba(201,163,90,0.1)', padding: '2px 7px' }}>
+                          {p.caso.area_legal}
+                        </span>
+                      )}
+                      <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-taupe)' }}>
+                        Postulé el {new Date(p.created_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                      {p.caso?.estado && (
+                        <EstadoBadge estado={p.caso.estado as EstadoCaso} />
+                      )}
+                    </div>
+
+                    {/* Mensaje enviado como chat bubble */}
+                    {p.mensaje && (
+                      <div style={{ background: '#f0f4f8', borderRadius: '0 10px 10px 10px', padding: '10px 14px', marginTop: 8, maxWidth: 540 }}>
+                        <div style={{ fontFamily: 'var(--font-body)', fontSize: 9, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#a68f85', marginBottom: 4 }}>
+                          Tu mensaje de presentación
+                        </div>
+                        <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: '#2a3a5c', lineHeight: 1.65, margin: 0 }}>{p.mensaje}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Ver caso si fue aceptada */}
+                  {esAceptadaAMi && p.caso?.id && (
+                    <Link href={`/dashboard/abogado/casos/${p.caso.id}`}
+                      style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', background: 'var(--dls-navy)', color: 'var(--dls-champagne)', padding: '9px 16px', textDecoration: 'none' }}>
+                      Ver caso <IconExternalLink />
+                    </Link>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // TAB: POOL (código original sin cambios)
+  // ════════════════════════════════════════════════════════════════════════════
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 144px)', minHeight: 500 }}>
-
       {/* Header de página */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexShrink: 0 }}>
         <div>
@@ -260,12 +429,12 @@ export function PoolExplorar({ casos, casosPostulados, puntosRestantes, postulac
         </div>
       </div>
 
+      {tabBar}
+
       {/* Layout dos columnas */}
       <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', flex: 1, minHeight: 0, border: '1px solid var(--dls-hairline)', background: 'var(--dls-white)' }}>
-
         {/* ══ IZQUIERDA ══ */}
         <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--dls-hairline)', minHeight: 0 }}>
-          {/* Filtros */}
           <div style={{ padding: '14px', borderBottom: '1px solid var(--dls-hairline)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ position: 'relative' }}>
               <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--dls-taupe)', pointerEvents: 'none' }}><IconSearch /></span>
@@ -289,8 +458,6 @@ export function PoolExplorar({ casos, casosPostulados, puntosRestantes, postulac
               {resultado.length} caso{resultado.length !== 1 ? 's' : ''} disponible{resultado.length !== 1 ? 's' : ''}
             </p>
           </div>
-
-          {/* Lista scrollable */}
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {resultado.length === 0 ? (
               <div style={{ padding: '40px 20px', textAlign: 'center' }}>
@@ -313,7 +480,7 @@ export function PoolExplorar({ casos, casosPostulados, puntosRestantes, postulac
                     background: activo ? 'rgba(201,163,90,0.06)' : 'transparent',
                     transition: 'background 0.12s',
                     position: 'relative'
-                    }}
+                  }}
                   onMouseEnter={e => { if (!activo) e.currentTarget.style.background = 'rgba(15,30,58,0.03)' }}
                   onMouseLeave={e => { if (!activo) e.currentTarget.style.background = activo ? 'rgba(201,163,90,0.06)' : 'transparent' }}>
                   <p style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 13, color: 'var(--dls-navy)', margin: '0 0 5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: postulado ? 70 : 0 }}>
@@ -333,12 +500,9 @@ export function PoolExplorar({ casos, casosPostulados, puntosRestantes, postulac
             })}
           </div>
         </div>
-
         {/* ══ DERECHA ══ */}
         {seleccionado ? (
           <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-
-            {/* Cabecera fija con botón postular */}
             <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--dls-hairline)', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -357,17 +521,11 @@ export function PoolExplorar({ casos, casosPostulados, puntosRestantes, postulac
                 </div>
               </div>
             </div>
-
-            {/* Cuerpo scrollable */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 22 }}>
-
-              {/* Descripción */}
               <div>
                 <div style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 8 }}>Descripción</div>
                 <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: 1.8, color: 'var(--dls-navy-mid)', margin: 0 }}>{seleccionado.descripcion}</p>
               </div>
-
-              {/* Grid metadatos */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, padding: '18px 0', borderTop: '1px solid var(--dls-hairline)', borderBottom: '1px solid var(--dls-hairline)' }}>
                 <div>
                   <p style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 4 }}>Fecha</p>
@@ -393,8 +551,6 @@ export function PoolExplorar({ casos, casosPostulados, puntosRestantes, postulac
                   </div>
                 )}
               </div>
-
-              {/* ── Datos de contacto anónimo ─────────────────────────── */}
               {esAnonimo && (
                 <div style={{ background: 'rgba(201,163,90,0.05)', border: '1px solid rgba(201,163,90,0.2)', padding: '16px 20px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
@@ -422,8 +578,6 @@ export function PoolExplorar({ casos, casosPostulados, puntosRestantes, postulac
                   </div>
                 </div>
               )}
-
-              {/* ── Documentos ──────────────────────────────────────────── */}
               {docsSeleccionado.length > 0 && (
                 <div>
                   <div style={{ fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--dls-taupe)', marginBottom: 12 }}>
@@ -431,19 +585,13 @@ export function PoolExplorar({ casos, casosPostulados, puntosRestantes, postulac
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
                     {docsSeleccionado.map(doc => (
-                      <button
-                        key={doc.id}
-                        type="button"
-                        onClick={() => setDocPreview(doc)}
+                      <button key={doc.id} type="button" onClick={() => setDocPreview(doc)}
                         style={{ textAlign: 'left', background: 'var(--dls-cream)', border: '1px solid var(--dls-hairline)', padding: '12px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 10, transition: 'border-color 0.15s', position: 'relative', overflow: 'hidden' }}
                         onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--dls-champagne)'; e.currentTarget.style.background = 'rgba(201,163,90,0.04)' }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--dls-hairline)'; e.currentTarget.style.background = 'var(--dls-cream)' }}
-                      >
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--dls-hairline)'; e.currentTarget.style.background = 'var(--dls-cream)' }}>
                         <DocIcon tipo={doc.tipo} />
                         <div style={{ minWidth: 0 }}>
-                          <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-navy)', fontWeight: 600, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {doc.nombre}
-                          </p>
+                          <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--dls-navy)', fontWeight: 600, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.nombre}</p>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <span style={{ fontFamily: 'var(--font-body)', fontSize: 9, color: 'var(--dls-taupe)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>{doc.tipo}</span>
                             <span style={{ color: 'var(--dls-champagne)', opacity: 0.7 }}><IconExternalLink /></span>
@@ -454,8 +602,6 @@ export function PoolExplorar({ casos, casosPostulados, puntosRestantes, postulac
                   </div>
                 </div>
               )}
-
-              {/* Aviso de puntos */}
               {!yaPostulo && !lleno && puntosRestantes > 0 && (
                 <div style={{ background: 'rgba(201,163,90,0.06)', border: '1px solid rgba(201,163,90,0.2)', padding: '12px 16px' }}>
                   <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-navy)', margin: 0 }}>
@@ -474,8 +620,6 @@ export function PoolExplorar({ casos, casosPostulados, puntosRestantes, postulac
           </div>
         )}
       </div>
-
-      {/* Modal de preview de documento — via Portal */}
       {mounted && docPreview && (
         <DocPreviewModal doc={docPreview} onClose={() => setDocPreview(null)} />
       )}
