@@ -72,7 +72,6 @@ export default async function SeguimientoCodigoPage({ params }: Props) {
   const postulaciones: PostulacionConAbogado[] = []
 
   if (!caso.abogado_id) {
-    // 1. Postulaciones + perfil básico
     const { data: posts } = await admin
       .from('postulaciones')
       .select(`
@@ -84,7 +83,6 @@ export default async function SeguimientoCodigoPage({ params }: Props) {
       .order('created_at', { ascending: true })
 
     if (posts && posts.length > 0) {
-      // 2. Lawyer profiles separado
       const abogadoIds = posts.map(p => p.abogado_id)
       const { data: lps } = await admin
         .from('lawyer_profiles')
@@ -195,9 +193,16 @@ export default async function SeguimientoCodigoPage({ params }: Props) {
               <p style={{ fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: 1.75, color: 'var(--dls-navy-mid)', margin: 0 }}>{caso.descripcion}</p>
             </div>
 
-            {/* Abogado asignado */}
+            {/* Abogado asignado — FIX: border separado para no conflictuar con borderLeft */}
             {abogado && (
-              <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', borderLeft: '3px solid var(--dls-champagne)', padding: '24px 28px' }}>
+              <div style={{
+                background: 'var(--dls-white)',
+                borderTop: '1px solid var(--dls-hairline)',
+                borderRight: '1px solid var(--dls-hairline)',
+                borderBottom: '1px solid var(--dls-hairline)',
+                borderLeft: '3px solid var(--dls-champagne)',
+                padding: '24px 28px',
+              }}>
                 <div className="eyebrow" style={{ marginBottom: 12, color: 'var(--dls-navy)' }}>Abogado asignado</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(15,30,58,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -215,16 +220,27 @@ export default async function SeguimientoCodigoPage({ params }: Props) {
               </div>
             )}
 
-            {/* Documentos */}
+            {/* Documentos — FIX: sin onMouseEnter/onMouseLeave (Server Component) */}
             {documentos && documentos.length > 0 && (
               <div style={{ background: 'var(--dls-white)', border: '1px solid var(--dls-hairline)', padding: '28px' }}>
                 <div className="eyebrow" style={{ marginBottom: 16, color: 'var(--dls-navy)' }}>Documentos adjuntos ({documentos.length})</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {documentos.map(doc => (
-                    <a key={doc.id} href={doc.url} target="_blank" rel="noopener noreferrer"
-                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--dls-cream)', border: '1px solid var(--dls-hairline)', textDecoration: 'none', transition: 'border-color 0.15s' }}
-                      onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--dls-champagne)')}
-                      onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--dls-hairline)')}>
+                    <a
+                      key={doc.id}
+                      href={doc.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '12px 16px',
+                        background: 'var(--dls-cream)',
+                        border: '1px solid var(--dls-hairline)',
+                        textDecoration: 'none',
+                      }}
+                    >
                       <span style={{ color: 'var(--dls-champagne)', flexShrink: 0 }}><IconDoc /></span>
                       <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--dls-navy)', margin: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.nombre}</p>
                       <span style={{ fontFamily: 'var(--font-body)', fontSize: 10, color: 'var(--dls-champagne)', letterSpacing: '0.06em', textTransform: 'uppercase', flexShrink: 0 }}>Abrir →</span>
@@ -234,7 +250,7 @@ export default async function SeguimientoCodigoPage({ params }: Props) {
               </div>
             )}
 
-            {/* Panel de postulaciones con código para autorizacón anónima */}
+            {/* Panel de postulaciones con código para autorización anónima */}
             {!caso.abogado_id && caso.estado !== 'cerrado' && (
               <PostulacionesPanel
                 postulaciones={postulaciones}
@@ -259,8 +275,11 @@ export default async function SeguimientoCodigoPage({ params }: Props) {
               <p style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 16, color: 'var(--dls-cream)', lineHeight: 1.45, marginBottom: 18, opacity: 0.85 }}>
                 Crea una cuenta para comunicarte con tu abogado directamente.
               </p>
-              <Link href={`/registro${caso.email_contacto ? `?email=${encodeURIComponent(caso.email_contacto)}` : ''}`} className="btn-primary"
-                style={{ display: 'flex', justifyContent: 'center', padding: '12px 0', width: '100%', boxSizing: 'border-box', fontSize: 11 }}>
+              <Link
+                href={`/registro${caso.email_contacto ? `?email=${encodeURIComponent(caso.email_contacto)}` : ''}`}
+                className="btn-primary"
+                style={{ display: 'flex', justifyContent: 'center', padding: '12px 0', width: '100%', boxSizing: 'border-box', fontSize: 11 }}
+              >
                 <span>Crear cuenta gratis</span><IconArrow />
               </Link>
               <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'rgba(250,244,237,0.4)', textAlign: 'center', marginTop: 10, letterSpacing: '0.04em' }}>
